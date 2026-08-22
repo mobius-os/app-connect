@@ -22,7 +22,16 @@ token minted at pairing.
 2. Run the shown one-line command on that machine (`curl … | python3 -`).
 3. It appears here as **Online**.
 
-Remove a machine here to revoke its token immediately.
+Disconnect an online machine here to stop and uninstall its runner before its
+token is revoked. For an offline machine, Connect shows the local command:
+
+```sh
+python3 ~/.mobius-connect/runner.py --uninstall
+```
+
+Running that command removes the runner and revokes the saved connection when
+the Möbius server is reachable. The app also allows a deliberate server-side
+removal if the machine is permanently unavailable.
 
 ## Status
 

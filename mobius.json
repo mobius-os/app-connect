@@ -1,0 +1,25 @@
+{
+  "id": "connect",
+  "name": "Connect",
+  "version": "0.1.0",
+  "description": "Pair your laptop, workstation, or cluster and let Möbius run things on it.",
+  "author": "mobius-os",
+  "license": "MIT",
+  "entry": "index.jsx",
+  "icon": "icon.png",
+  "offline_capable": false,
+  "permissions": {
+    "connect_manage": true
+  },
+  "runtime": {
+    "imports": [
+      "react",
+      "react-dom",
+      "@openai/apps-sdk-ui/components/Icon"
+    ],
+    "esm_deps": []
+  },
+  "source_files": [
+    "icon.png"
+  ]
+}

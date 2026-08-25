@@ -8,9 +8,12 @@ device.
 
 Möbius stays on its own always-on server. A tiny **runner** (pure Python
 stdlib, no dependencies) runs on the target machine and dials *outbound* to this
-instance over TLS, holding an SSE command channel open. The agent (or this app)
+instance over ordinary HTTPS, holding an event stream open. The current runner
+cleanly renews that stream every ten minutes, before common hosting response
+limits, while any command keeps running independently. The agent (or this app)
 can then run commands on that machine through it. No open ports, no VPN, no
-account — the machine calls home.
+relay account — the machine calls home using the operating system's standard
+HTTPS and proxy behavior.
 
 Your Möbius server is the owner-trusted rendezvous, so there is no separate
 relay account or service. Each machine authenticates with a per-host bearer
@@ -22,19 +25,33 @@ token minted at pairing.
 2. Run the shown one-line command on that machine (`curl … | python3 -`).
 3. It appears here as **Online**.
 
-Disconnect an online machine here to stop and uninstall its runner before its
-token is revoked. For an offline machine, Connect shows the local command:
+For an online machine, **Disconnect machine** asks the runner to uninstall
+itself, revokes its access, and removes the saved connection. Connect also shows
+the equivalent local command as a fallback when Möbius cannot reach the machine:
 
 ```sh
 python3 ~/.mobius-connect/runner.py --uninstall
 ```
 
-Running that command removes the runner and revokes the saved connection when
-the Möbius server is reachable. The app also allows a deliberate server-side
-removal if the machine is permanently unavailable.
+Running that command on the machine removes its local service and, when the
+Möbius server is reachable, revokes the saved connection too. If an offline
+machine is permanently unavailable, **Remove saved connection** revokes its
+access and removes it from the app, but cannot remove the local service files.
 
-## Status
+## Command lifecycle
 
-v0.1 supports pairing, live online/offline status, and agent-driven command
-execution. The runner runs commands as you, in your environment — the same
-trust model as running a coding CLI locally.
+Online and available are distinct. Connect shows **Working** while a machine is
+running one command and rejects parallel work rather than hiding it in a queue.
+Stopping a command terminates the shell and every process it started. A command
+that is not acknowledged promptly expires before the runner is allowed to
+spawn it, so caller timeouts cannot become delayed side effects.
+
+Commands keep one stable identity while the runner reconnects. The runner
+retains an unsent result until Möbius accepts it, and Möbius retains the
+active command plus a short-lived completed result so a lost caller can retry
+without repeating the work. A routine ten-minute stream renewal therefore does
+not impose a ten-minute command limit. Command text is discarded from durable
+state as soon as execution starts.
+
+Older paired runners continue to work in single-flight mode. Connect offers an
+in-place update command before it enables remote cancellation for them.

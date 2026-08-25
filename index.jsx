@@ -704,6 +704,7 @@ export default function App({ appId, token }) {
               onSelect={selectCommand}
               onRenameStart={() => {
                 setStopConfirmingId(null)
+                setConfirmingId(null)
                 startRename(host)
               }}
               onRenameChange={setRenameValue}

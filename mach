@@ -1,0 +1,191 @@
+#!/usr/bin/env python3
+"""mach — run one command on a Connect-paired machine (explicit target, stateless).
+
+The Connect app pairs external machines with this Möbius instance over a secure
+outbound tunnel. `mach` sends ONE command to a NAMED machine and prints its raw
+stdout/stderr, exiting with the remote exit code — so it reads like a local
+shell, without the curl + JSON envelope.
+
+Usage:
+  mach -m <machine> '<command>'                 run one command on <machine>
+  mach -m <machine> -t <seconds> '<command>'    raise the timeout (default 60, max 3600)
+  mach --list                                   list paired machines (name, status, id)
+
+  <machine> matches a machine's name (case-insensitive substring) or its host id
+  from `mach --list`. The target is ALWAYS explicit — even when only one machine
+  is paired — so every command in the transcript records where it ran, and a
+  second machine can never silently change what runs where.
+
+  There is no remembered directory or "current machine": each call is
+  self-contained. Want a directory or environment? Put it in the command:
+      mach -m box 'cd ~/app && npm test'
+  Batch several steps with && or ; to avoid a round-trip per command.
+
+Reads AGENT_TOKEN and API_BASE_URL from the environment.
+"""
+from __future__ import annotations
+
+import json
+import os
+import secrets
+import sys
+import time
+import urllib.error
+import urllib.request
+
+
+def _fail(msg: str, code: int = 1):
+    sys.stderr.write(msg.rstrip("\n") + "\n")
+    raise SystemExit(code)
+
+
+def _call(
+    path: str,
+    payload=None,
+    method: str = "GET",
+    retry_until: float | None = None,
+):
+    base = os.environ.get("API_BASE_URL")
+    token = os.environ.get("AGENT_TOKEN")
+    if not base or not token:
+        _fail("mach: API_BASE_URL / AGENT_TOKEN not set in this environment.")
+    req = urllib.request.Request(
+        base.rstrip("/") + path,
+        data=json.dumps(payload).encode() if payload is not None else None,
+        method=method,
+    )
+    req.add_header("Authorization", "Bearer " + token)
+    if payload is not None:
+        req.add_header("Content-Type", "application/json")
+    delay = 1
+    while True:
+        try:
+            with urllib.request.urlopen(req, timeout=3660) as resp:
+                return json.loads(resp.read().decode())
+        except urllib.error.HTTPError as exc:
+            detail = exc.read().decode(errors="replace")
+            retryable = exc.code in (502, 503)
+            if retryable and retry_until is not None and time.monotonic() < retry_until:
+                time.sleep(min(delay, max(0, retry_until - time.monotonic())))
+                delay = min(delay * 2, 5)
+                continue
+            try:
+                parsed = json.loads(detail)
+                if isinstance(parsed, dict) and parsed.get("detail"):
+                    detail = parsed["detail"]
+            except ValueError:
+                pass
+            _fail(f"mach: {detail}", 2)
+        except urllib.error.URLError as exc:
+            if retry_until is not None and time.monotonic() < retry_until:
+                time.sleep(min(delay, max(0, retry_until - time.monotonic())))
+                delay = min(delay * 2, 5)
+                continue
+            _fail(f"mach: could not reach Möbius ({exc.reason}).", 2)
+
+
+def _hosts():
+    return _call("/api/connect/hosts").get("hosts", [])
+
+
+def _format(hosts) -> str:
+    rows = []
+    for h in hosts:
+        state = "online" if h.get("online") else (
+            "offline" if h.get("paired") else "waiting to pair")
+        rows.append(f"  {h['name']}  ({state})  [{h['id']}]")
+    return "\n".join(rows) or "  (no machines paired yet — open the Connect app)"
+
+
+def _matches(hosts, machine):
+    exact = [host for host in hosts if host.get("id") == machine]
+    if exact:
+        return exact
+    needle = machine.lower()
+    return [
+        host for host in hosts
+        if needle in (host.get("name") or "").lower()
+    ]
+
+
+def main(argv) -> int:
+    machine = None
+    timeout = 60
+    cmd_parts: list[str] = []
+    it = iter(argv)
+    for tok in it:
+        if tok in ("-m", "--machine"):
+            machine = next(it, None)
+        elif tok in ("-t", "--timeout"):
+            raw_timeout = next(it, None)
+            try:
+                timeout = int(raw_timeout)
+            except (TypeError, ValueError):
+                _fail("mach: timeout must be a whole number from 1 to 3600 seconds.")
+            timeout = max(1, min(timeout, 3600))
+        elif tok == "--list":
+            print(_format(_hosts()))
+            return 0
+        elif tok in ("-h", "--help"):
+            print(__doc__)
+            return 0
+        else:
+            cmd_parts.append(tok)
+            cmd_parts.extend(it)
+
+    if machine is None:
+        _fail("mach: name a machine with -m <machine>. Paired machines:\n"
+              + _format(_hosts()))
+    if not cmd_parts:
+        _fail("mach: nothing to run. Usage: mach -m <machine> '<command>'")
+
+    hosts = _hosts()
+    matches = _matches(hosts, machine)
+    if not matches:
+        _fail(f"mach: no paired machine matches '{machine}'. Paired machines:\n"
+              + _format(hosts))
+    if len(matches) > 1:
+        _fail(f"mach: '{machine}' is ambiguous — it matches:\n" + _format(matches))
+    host = matches[0]
+    if not host.get("online"):
+        _fail(f"mach: {host['name']} is offline right now.")
+
+    request_id = secrets.token_hex(8)
+    try:
+        res = _call(
+            f"/api/connect/hosts/{host['id']}/exec",
+            {
+                "cmd": " ".join(cmd_parts),
+                "timeout": timeout,
+                "request_id": request_id,
+            },
+            "POST",
+            time.monotonic() + timeout + 75,
+        )
+    except KeyboardInterrupt:
+        try:
+            _call(
+                f"/api/connect/hosts/{host['id']}/commands/{request_id}/cancel",
+                {}, "POST",
+            )
+            sys.stderr.write(
+                f"\nmach: asked {host['name']} to stop the command.\n"
+            )
+        except SystemExit:
+            sys.stderr.write(
+                "mach: stopped waiting, but remote cancellation was not "
+                "confirmed. Check Connect before sending another command.\n"
+            )
+        return 130
+    sys.stdout.write(res.get("stdout", ""))
+    sys.stderr.write(res.get("stderr", ""))
+    if res.get("truncated"):
+        sys.stderr.write("\nmach: output was truncated by Möbius.\n")
+    return res.get("exit_code", 0)
+
+
+if __name__ == "__main__":
+    try:
+        raise SystemExit(main(sys.argv[1:]))
+    except KeyboardInterrupt:
+        raise SystemExit(130)

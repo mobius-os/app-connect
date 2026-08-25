@@ -1,7 +1,7 @@
 {
   "id": "connect",
   "name": "Connect",
-  "version": "0.2.0",
+  "version": "0.3.5",
   "description": "Pair your laptop, workstation, or cluster and let Möbius run things on it.",
   "author": "mobius-os",
   "license": "MIT",
@@ -19,7 +19,11 @@
     ],
     "esm_deps": []
   },
+  "skills": ["connect.md"],
   "source_files": [
-    "icon.png"
+    "icon.png",
+    "connect.md",
+    "mach",
+    "connect-state.mjs"
   ]
 }

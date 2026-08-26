@@ -15,8 +15,8 @@ const CSS = `
     --cn-violet: #826df6; --cn-mint: #58cdbb; --cn-ink: #29243e;
     min-height: 100%; color: var(--text); background: var(--bg); font-family: var(--font);
   }
-  .cn-head { width: 100%; border-bottom: 1px solid var(--border); background: var(--bg); }
-  .cn-head-inner { width: min(760px, 100%); margin: 0 auto; display: flex; align-items: center; gap: 11px; padding: max(12px, env(safe-area-inset-top)) 16px 12px; }
+  .cn-head { width: 100%; background: var(--bg); }
+  .cn-head-inner { width: min(760px, 100%); margin: 0 auto; display: flex; align-items: center; gap: 11px; padding: max(12px, env(safe-area-inset-top)) 16px 12px; border-bottom: 1px solid var(--border); }
   .cn-mark { flex: 0 0 auto; width: 34px; height: 34px; border-radius: 8px; display: block; object-fit: contain; }
   .cn-head-copy { min-width: 0; }
   .cn-title { font-size: 18px; font-weight: 700; letter-spacing: -0.015em; line-height: 1.15; margin: 0; }
@@ -24,6 +24,7 @@ const CSS = `
   .cn-shell { width: min(720px, calc(100% - 32px)); margin: 0 auto; padding: 18px 0 56px; }
 
   .cn-onboard { padding: 22px 0 24px; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: end; }
+  .cn-onboard > .cn-btn { min-height: 48px; }
   .cn-field { min-width: 0; }
   .cn-label { display: block; font-size: 12px; font-weight: 670; color: var(--muted); margin: 0 0 8px 2px; }
   .cn-input { width: 100%; height: 48px; background: var(--surface); border: 1px solid var(--border); border-radius: 13px; color: var(--text); font: 15px var(--font); padding: 0 14px; }
@@ -629,7 +630,7 @@ export default function App({ appId, token }) {
         <BrandMark appId={appId}/>
         <div className="cn-head-copy">
           <h1 className="cn-title">Connect</h1>
-          <p className="cn-sub">Bring a laptop, workstation, or cluster within reach of Möbius — securely, from any device.</p>
+          <p className="cn-sub">Secure access to your paired machines.</p>
         </div>
       </div>
     </header>
@@ -704,6 +705,7 @@ export default function App({ appId, token }) {
               onSelect={selectCommand}
               onRenameStart={() => {
                 setStopConfirmingId(null)
+                setConfirmingId(null)
                 startRename(host)
               }}
               onRenameChange={setRenameValue}

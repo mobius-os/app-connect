@@ -16,7 +16,8 @@ const CSS = `
     min-height: 100%; color: var(--text); background: var(--bg); font-family: var(--font);
   }
   .cn-head { width: 100%; background: var(--bg); }
-  .cn-head-inner { width: min(760px, 100%); margin: 0 auto; display: flex; align-items: center; gap: 11px; padding: max(12px, env(safe-area-inset-top)) 16px 12px; border-bottom: 1px solid var(--border); }
+  .cn-head-inner { position: relative; width: min(760px, 100%); margin: 0 auto; display: flex; align-items: center; gap: 11px; padding: max(12px, env(safe-area-inset-top)) 16px 12px; }
+  .cn-head-inner::after { content: ''; position: absolute; left: 16px; right: 16px; bottom: 0; height: 1px; background: var(--border); }
   .cn-mark { flex: 0 0 auto; width: 34px; height: 34px; border-radius: 8px; display: block; object-fit: contain; }
   .cn-head-copy { min-width: 0; }
   .cn-title { font-size: 18px; font-weight: 700; letter-spacing: -0.015em; line-height: 1.15; margin: 0; }

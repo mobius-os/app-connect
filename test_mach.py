@@ -1,12 +1,14 @@
+import base64
 import contextlib
 import importlib.machinery
 import importlib.util
 import io
 import os
+import shlex
 import unittest
 import urllib.error
-from unittest import mock
 from pathlib import Path
+from unittest import mock
 
 
 def load_mach():
@@ -90,6 +92,198 @@ class MachTargetingTest(unittest.TestCase):
         self.assertEqual(stdout.getvalue(), "out")
         self.assertIn("err", stderr.getvalue())
         self.assertIn("output was truncated", stderr.getvalue())
+
+    def test_cwd_uses_the_structured_remote_field(self):
+        mach = load_mach()
+        mach._hosts = lambda: [{
+            "id": "h_test", "name": "Host", "online": True,
+            "platform": "Linux 6.8",
+        }]
+        calls = []
+        mach._call = lambda path, payload=None, method="GET", retry_until=None: (
+            calls.append((path, payload, method))
+            or {"stdout": "/srv/app\n", "exit_code": 0}
+        )
+
+        with contextlib.redirect_stdout(io.StringIO()):
+            result = mach.main(["-m", "Host", "-C", "/srv/app", "pwd"])
+
+        self.assertEqual(result, 0)
+        self.assertEqual(calls[0][1]["cwd"], "/srv/app")
+        self.assertEqual(calls[0][1]["cmd"], "pwd")
+
+    def test_cwd_rejects_a_path_relative_to_the_runner_service(self):
+        mach = load_mach()
+        mach._hosts = lambda: [{
+            "id": "h_test", "name": "Host", "online": True,
+            "platform": "Linux 6.8",
+        }]
+        mach._call = mock.Mock()
+        stderr = io.StringIO()
+
+        with contextlib.redirect_stderr(stderr), self.assertRaises(SystemExit):
+            mach.main(["-m", "Host", "-C", "projects/app", "pwd"])
+
+        mach._call.assert_not_called()
+        self.assertIn("must be an absolute path", stderr.getvalue())
+
+    def test_windows_drive_path_is_accepted_as_remote_cwd(self):
+        mach = load_mach()
+        mach._hosts = lambda: [{
+            "id": "h_test", "name": "Desk", "online": True,
+            "platform": "Windows 11",
+        }]
+        calls = []
+        mach._call = lambda path, payload=None, method="GET", retry_until=None: (
+            calls.append(payload) or {"stdout": "", "exit_code": 0}
+        )
+
+        result = mach.main(["-m", "Desk", "-C", "C:\\work\\app", "cd"])
+
+        self.assertEqual(result, 0)
+        self.assertEqual(calls[0]["cwd"], "C:\\work\\app")
+
+    def test_windows_cwd_rejects_a_path_relative_to_the_current_drive(self):
+        mach = load_mach()
+        mach._hosts = lambda: [{
+            "id": "h_test", "name": "Desk", "online": True,
+            "platform": "Windows 11",
+        }]
+        mach._call = mock.Mock()
+        stderr = io.StringIO()
+
+        with contextlib.redirect_stderr(stderr), self.assertRaises(SystemExit):
+            mach.main(["-m", "Desk", "-C", "\\work\\app", "cd"])
+
+        mach._call.assert_not_called()
+        self.assertIn("must be an absolute path", stderr.getvalue())
+
+    def test_posix_script_preserves_shell_and_template_syntax(self):
+        mach = load_mach()
+        mach._hosts = lambda: [{
+            "id": "h_test", "name": "Host", "online": True,
+            "platform": "Linux 6.8",
+        }]
+        calls = []
+        mach._call = lambda path, payload=None, method="GET", retry_until=None: (
+            calls.append((path, payload, method))
+            or {"stdout": "ok\n", "exit_code": 0}
+        )
+        script = "set -eu\nname=kept\nprintf '%s\\n' '{{$name, $_ := .Networks}}'\n"
+
+        with mock.patch.object(mach.sys, "stdin", io.StringIO(script)), \
+                contextlib.redirect_stdout(io.StringIO()):
+            result = mach.main([
+                "-m", "Host", "--script", "--shell", "bash",
+            ])
+
+        self.assertEqual(result, 0)
+        self.assertEqual(shlex.split(calls[0][1]["cmd"]), [
+            "exec", "bash", "-c", script,
+        ])
+
+    def test_updated_runner_receives_the_literal_script_as_data(self):
+        mach = load_mach()
+        mach._hosts = lambda: [{
+            "id": "h_test", "name": "Host", "online": True,
+            "platform": "Linux 6.8", "runner_protocol": 4,
+        }]
+        calls = []
+        mach._call = lambda path, payload=None, method="GET", retry_until=None: (
+            calls.append((path, payload, method))
+            or {"stdout": "ok\n", "exit_code": 0}
+        )
+        script = "set -eu\nname='$literal'\nprintf '%s\\n' \"$name\"\n"
+
+        with mock.patch.object(mach.sys, "stdin", io.StringIO(script)), \
+                contextlib.redirect_stdout(io.StringIO()):
+            result = mach.main([
+                "-m", "Host", "-C", "/srv/app", "--script", "--shell", "bash",
+            ])
+
+        self.assertEqual(result, 0)
+        payload = calls[0][1]
+        self.assertNotIn("cmd", payload)
+        self.assertEqual(payload["script"], script)
+        self.assertEqual(payload["shell"], "bash")
+        self.assertEqual(payload["cwd"], "/srv/app")
+
+    def test_updated_windows_runner_has_no_cmd_length_ceiling(self):
+        mach = load_mach()
+        mach._hosts = lambda: [{
+            "id": "h_test", "name": "Desk", "online": True,
+            "platform": "Windows 11", "runner_protocol": 4,
+        }]
+        calls = []
+        mach._call = lambda path, payload=None, method="GET", retry_until=None: (
+            calls.append(payload) or {"stdout": "", "exit_code": 0}
+        )
+        script = "Write-Output 'ready'\n" + ("#" * 12_000)
+
+        with mock.patch.object(mach.sys, "stdin", io.StringIO(script)):
+            result = mach.main(["-m", "Desk", "--script"])
+
+        self.assertEqual(result, 0)
+        self.assertEqual(calls[0]["script"], script)
+        self.assertNotIn("cmd", calls[0])
+
+    def test_updated_windows_runner_rejects_an_unsupported_shell_locally(self):
+        mach = load_mach()
+        mach._hosts = lambda: [{
+            "id": "h_test", "name": "Desk", "online": True,
+            "platform": "Windows 11", "runner_protocol": 4,
+        }]
+        mach._call = mock.Mock()
+        stderr = io.StringIO()
+
+        with mock.patch.object(mach.sys, "stdin", io.StringIO("echo ready\n")), \
+                contextlib.redirect_stderr(stderr), self.assertRaises(SystemExit):
+            mach.main(["-m", "Desk", "--script", "--shell", "cmd.exe"])
+
+        mach._call.assert_not_called()
+        self.assertIn("supports powershell or pwsh", stderr.getvalue())
+
+    def test_windows_script_uses_powershell_encoded_command(self):
+        mach = load_mach()
+        script = "Write-Output '$name'\n"
+        command = mach._wrap_script(script, None, "Windows 11")
+        encoded = command.rsplit(" ", 1)[1]
+
+        self.assertIn("powershell.exe", command)
+        self.assertEqual(
+            base64.b64decode(encoded).decode("utf-16-le"), script,
+        )
+
+    def test_windows_script_rejects_work_too_large_for_cmd(self):
+        mach = load_mach()
+        mach._hosts = lambda: [{
+            "id": "h_test", "name": "Desk", "online": True,
+            "platform": "Windows 11",
+        }]
+        mach._call = mock.Mock()
+        script = "Write-Output 'ready'\n" + ("#" * 3_000)
+        stderr = io.StringIO()
+
+        with mock.patch.object(mach.sys, "stdin", io.StringIO(script)), \
+                contextlib.redirect_stderr(stderr), self.assertRaises(SystemExit):
+            mach.main(["-m", "Desk", "--script"])
+
+        mach._call.assert_not_called()
+        self.assertIn("too large for the Windows shell", stderr.getvalue())
+
+    def test_silent_remote_failure_has_a_diagnostic(self):
+        mach = load_mach()
+        mach._hosts = lambda: [{"id": "h_test", "name": "Host", "online": True}]
+        mach._call = lambda *_args, **_kwargs: {
+            "stdout": "", "stderr": "", "exit_code": 2,
+        }
+        stderr = io.StringIO()
+
+        with contextlib.redirect_stderr(stderr):
+            result = mach.main(["-m", "Host", "false"])
+
+        self.assertEqual(result, 2)
+        self.assertIn("exited 2 without producing output", stderr.getvalue())
 
 
 class MachHttpErrorTest(unittest.TestCase):

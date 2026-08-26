@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""mach — run one command on a Connect-paired machine (explicit target, stateless).
+"""mach — run work on one named Connect machine without shell-quoting puzzles.
 
 The Connect app pairs external machines with this Möbius instance over a secure
 outbound tunnel. `mach` sends ONE command to a NAMED machine and prints its raw
@@ -8,6 +8,9 @@ shell, without the curl + JSON envelope.
 
 Usage:
   mach -m <machine> '<command>'                 run one command on <machine>
+  mach -m <machine> -C <absolute-dir> '<command>'
+                                                run it from a remote directory
+  mach -m <machine> --script [--shell <name>]   read a literal script from stdin
   mach -m <machine> -t <seconds> '<command>'    raise the timeout (default 60, max 3600)
   mach --list                                   list paired machines (name, status, id)
 
@@ -16,22 +19,39 @@ Usage:
   is paired — so every command in the transcript records where it ran, and a
   second machine can never silently change what runs where.
 
-  There is no remembered directory or "current machine": each call is
-  self-contained. Want a directory or environment? Put it in the command:
-      mach -m box 'cd ~/app && npm test'
-  Batch several steps with && or ; to avoid a round-trip per command.
+  Keep a simple one-liner inline. For loops, JSON, templates, nested quotes, or
+  several steps, send a literal script so the local shell cannot expand it:
+
+      mach -m box -C /srv/app --script --shell bash <<'MACH'
+      set -euo pipefail
+      docker compose ps --format json
+      MACH
+
+  Script mode defaults to sh on POSIX and PowerShell on Windows. -C is passed
+  directly to the remote runner, so use an absolute path. Every call remains
+  self-contained: there is no remembered machine, directory, or environment.
 
 Reads AGENT_TOKEN and API_BASE_URL from the environment.
 """
 from __future__ import annotations
 
+import base64
 import json
+import ntpath
 import os
+import posixpath
 import secrets
+import shlex
 import sys
 import time
 import urllib.error
 import urllib.request
+
+
+_MAX_COMMAND_CHARS = 64 * 1024
+# Windows runners launch commands through cmd.exe, whose 8,191-character limit
+# also includes its own wrapper text. Keep a small margin for that wrapper.
+_MAX_WINDOWS_COMMAND_CHARS = 8_000
 
 
 def _fail(msg: str, code: int = 1):
@@ -108,9 +128,60 @@ def _matches(hosts, machine):
     ]
 
 
+def _is_windows(platform_name: str | None) -> bool:
+    return (platform_name or "").lower().startswith("windows")
+
+
+def _is_absolute_remote_path(path: str, platform_name: str | None) -> bool:
+    if not _is_windows(platform_name):
+        return posixpath.isabs(path)
+    drive, tail = ntpath.splitdrive(path)
+    return bool(drive) and tail.startswith(("\\", "/"))
+
+
+def _selected_script_shell(
+    shell: str | None, platform_name: str | None,
+) -> str:
+    """Resolve the remote interpreter and reject unsupported Windows shells."""
+    if _is_windows(platform_name):
+        executable = shell or "powershell.exe"
+        allowed = {
+            "powershell": "powershell.exe",
+            "powershell.exe": "powershell.exe",
+            "pwsh": "pwsh",
+            "pwsh.exe": "pwsh.exe",
+        }
+        executable = allowed.get(executable.lower())
+        if executable is None:
+            _fail(
+                "mach: Windows script mode supports powershell or pwsh; "
+                "use a plain command for cmd.exe."
+            )
+        return executable
+    return shell or "sh"
+
+
+def _wrap_script(script: str, shell: str | None, platform_name: str | None) -> str:
+    """Compatibility wrapper for runners predating literal script transport."""
+    if "\x00" in script:
+        _fail("mach: a script cannot contain a NUL byte.")
+    executable = _selected_script_shell(shell, platform_name)
+    if _is_windows(platform_name):
+        encoded = base64.b64encode(script.encode("utf-16-le")).decode("ascii")
+        return (
+            f"{executable} -NoLogo -NoProfile -NonInteractive "
+            f"-EncodedCommand {encoded}"
+        )
+
+    return f"exec {shlex.quote(executable)} -c {shlex.quote(script)}"
+
+
 def main(argv) -> int:
     machine = None
     timeout = 60
+    cwd = None
+    script_mode = False
+    shell = None
     cmd_parts: list[str] = []
     it = iter(argv)
     for tok in it:
@@ -123,6 +194,16 @@ def main(argv) -> int:
             except (TypeError, ValueError):
                 _fail("mach: timeout must be a whole number from 1 to 3600 seconds.")
             timeout = max(1, min(timeout, 3600))
+        elif tok in ("-C", "--cwd"):
+            cwd = next(it, None)
+            if not cwd:
+                _fail("mach: -C / --cwd needs an absolute remote directory.")
+        elif tok == "--script":
+            script_mode = True
+        elif tok == "--shell":
+            shell = next(it, None)
+            if not shell:
+                _fail("mach: --shell needs an executable name such as sh or bash.")
         elif tok == "--list":
             print(_format(_hosts()))
             return 0
@@ -136,8 +217,15 @@ def main(argv) -> int:
     if machine is None:
         _fail("mach: name a machine with -m <machine>. Paired machines:\n"
               + _format(_hosts()))
-    if not cmd_parts:
-        _fail("mach: nothing to run. Usage: mach -m <machine> '<command>'")
+    if script_mode and cmd_parts:
+        _fail("mach: --script reads stdin; do not also provide an inline command.")
+    if shell is not None and not script_mode:
+        _fail("mach: --shell is only used with --script.")
+    if not script_mode and not cmd_parts:
+        _fail(
+            "mach: nothing to run. Use '<command>' or pipe a literal script "
+            "with --script."
+        )
 
     hosts = _hosts()
     matches = _matches(hosts, machine)
@@ -149,16 +237,60 @@ def main(argv) -> int:
     host = matches[0]
     if not host.get("online"):
         _fail(f"mach: {host['name']} is offline right now.")
+    if cwd is not None and not _is_absolute_remote_path(
+        cwd, host.get("platform"),
+    ):
+        _fail(
+            "mach: -C / --cwd must be an absolute path on the remote machine."
+        )
+
+    if script_mode:
+        script = sys.stdin.read()
+        if not script.strip():
+            _fail("mach: --script received no script on stdin.")
+        if "\x00" in script:
+            _fail("mach: a script cannot contain a NUL byte.")
+        literal_script = int(host.get("runner_protocol") or 1) >= 4
+        command = (
+            None
+            if literal_script
+            else _wrap_script(script, shell, host.get("platform"))
+        )
+    else:
+        command = " ".join(cmd_parts)
+        literal_script = False
+    if command is not None and _is_windows(host.get("platform")) and (
+        len(command) > _MAX_WINDOWS_COMMAND_CHARS
+    ):
+        _fail(
+            "mach: the remote command is too large for the Windows shell; "
+            "split the work or place a script in the project first."
+        )
+    work = script if literal_script else command
+    if len(work) > _MAX_COMMAND_CHARS:
+        _fail(
+            "mach: the remote work is larger than 64 KiB; split the work "
+            "or place a script in the project first."
+        )
 
     request_id = secrets.token_hex(8)
+    payload = {"timeout": timeout, "request_id": request_id}
+    if literal_script:
+        # Protocol 4 carries the exact script as data. It never becomes a local
+        # or remote command-line argument, avoiding both quoting and OS limits.
+        payload["script"] = script
+        if shell is not None:
+            payload["shell"] = _selected_script_shell(
+                shell, host.get("platform"),
+            )
+    else:
+        payload["cmd"] = command
+    if cwd is not None:
+        payload["cwd"] = cwd
     try:
         res = _call(
             f"/api/connect/hosts/{host['id']}/exec",
-            {
-                "cmd": " ".join(cmd_parts),
-                "timeout": timeout,
-                "request_id": request_id,
-            },
+            payload,
             "POST",
             time.monotonic() + timeout + 75,
         )
@@ -177,11 +309,18 @@ def main(argv) -> int:
                 "confirmed. Check Connect before sending another command.\n"
             )
         return 130
-    sys.stdout.write(res.get("stdout", ""))
-    sys.stderr.write(res.get("stderr", ""))
+    stdout = res.get("stdout", "")
+    stderr = res.get("stderr", "")
+    exit_code = int(res.get("exit_code", 0))
+    sys.stdout.write(stdout)
+    sys.stderr.write(stderr)
     if res.get("truncated"):
         sys.stderr.write("\nmach: output was truncated by Möbius.\n")
-    return res.get("exit_code", 0)
+    if exit_code and not stdout and not stderr:
+        sys.stderr.write(
+            f"mach: remote command exited {exit_code} without producing output.\n"
+        )
+    return exit_code
 
 
 if __name__ == "__main__":

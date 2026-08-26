@@ -55,3 +55,22 @@ state as soon as execution starts.
 
 Older paired runners continue to work in single-flight mode. Connect offers an
 in-place update command before it enables remote cancellation for them.
+
+## Agent command helper
+
+`mach` keeps a simple remote command short, passes a working directory as
+structured data, and accepts literal scripts without nested shell escaping:
+
+```bash
+/data/apps/connect/mach -m Host -C /srv/app 'git status --short'
+
+/data/apps/connect/mach -m Host -C /srv/app --script --shell bash <<'MACH'
+set -euo pipefail
+docker compose ps --format json
+MACH
+```
+
+The quoted heredoc delimiter keeps the script literal in the local shell.
+`mach` selects the requested interpreter on the paired machine and reports its
+real exit status. Script mode defaults to `sh` on POSIX and PowerShell on
+Windows.

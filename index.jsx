@@ -8,6 +8,7 @@ import {
 } from './connect-state.mjs'
 
 const DISCONNECT_COMMAND = 'python3 ~/.mobius-connect/runner.py --uninstall'
+const DEFAULT_MACHINE_NAME = 'My machine'
 
 const CSS = `
   * { box-sizing: border-box; }
@@ -419,7 +420,7 @@ function MachineRow({
 export default function App({ appId, token }) {
   const [hosts, setHosts] = useState([])
   const [serviceActive, setServiceActive] = useState(null)
-  const [newName, setNewName] = useState('')
+  const [newName, setNewName] = useState(DEFAULT_MACHINE_NAME)
   const [pairing, setPairing] = useState(null)
   const [confirmingId, setConfirmingId] = useState(null)
   const [renamingId, setRenamingId] = useState(null)
@@ -506,13 +507,13 @@ export default function App({ appId, token }) {
       const response = await fetch('/api/connect/hosts', {
         method: 'POST',
         headers: headers({ 'Content-Type': 'application/json' }),
-        body: JSON.stringify({ name: newName.trim() || 'My machine' }),
+        body: JSON.stringify({ name: newName.trim() || DEFAULT_MACHINE_NAME }),
       })
       if (!response.ok) {
         throw new Error(await responseError(response, 'Couldn’t add this machine.'))
       }
       setPairing(await response.json())
-      setNewName('')
+      setNewName(DEFAULT_MACHINE_NAME)
       window.mobius.signal('item_created', { type: 'machine' })
       await load()
     } catch (cause) {

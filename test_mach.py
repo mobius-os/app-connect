@@ -78,6 +78,30 @@ class MachTargetingTest(unittest.TestCase):
         self.assertEqual(raised.exception.code, 1)
         self.assertIn("whole number from 1 to 3600", stderr.getvalue())
 
+    def test_timeout_outside_range_is_not_silently_clamped(self):
+        mach = load_mach()
+        mach._hosts = mock.Mock()
+
+        for raw_timeout in ("0", "3601"):
+            with self.subTest(raw_timeout=raw_timeout), \
+                    contextlib.redirect_stderr(io.StringIO()), \
+                    self.assertRaises(SystemExit) as raised:
+                mach.main(["-m", "Host", "-t", raw_timeout, "echo ok"])
+            self.assertEqual(raised.exception.code, 1)
+
+        mach._hosts.assert_not_called()
+
+    def test_missing_machine_value_fails_without_a_network_call(self):
+        mach = load_mach()
+        mach._hosts = mock.Mock()
+        stderr = io.StringIO()
+
+        with contextlib.redirect_stderr(stderr), self.assertRaises(SystemExit):
+            mach.main(["-m"])
+
+        mach._hosts.assert_not_called()
+        self.assertIn("needs a machine name", stderr.getvalue())
+
     def test_remote_exit_and_truncation_are_reported(self):
         mach = load_mach()
         mach._hosts = lambda: [{"id": "h_test", "name": "Host", "online": True}]
@@ -208,6 +232,24 @@ class MachTargetingTest(unittest.TestCase):
         self.assertEqual(payload["shell"], "bash")
         self.assertEqual(payload["cwd"], "/srv/app")
 
+    def test_script_input_is_bounded_before_payload_construction(self):
+        mach = load_mach()
+        mach._hosts = lambda: [{
+            "id": "h_test", "name": "Host", "online": True,
+            "platform": "Linux 6.8", "runner_protocol": 4,
+        }]
+        mach._call = mock.Mock()
+        stdin = mock.Mock()
+        stdin.read.return_value = "x" * (mach._MAX_COMMAND_CHARS + 1)
+
+        with mock.patch.object(mach.sys, "stdin", stdin), \
+                contextlib.redirect_stderr(io.StringIO()), \
+                self.assertRaises(SystemExit):
+            mach.main(["-m", "Host", "--script"])
+
+        stdin.read.assert_called_once_with(mach._MAX_COMMAND_CHARS + 1)
+        mach._call.assert_not_called()
+
     def test_updated_windows_runner_has_no_cmd_length_ceiling(self):
         mach = load_mach()
         mach._hosts = lambda: [{
@@ -271,6 +313,26 @@ class MachTargetingTest(unittest.TestCase):
         mach._call.assert_not_called()
         self.assertIn("too large for the Windows shell", stderr.getvalue())
 
+    def test_windows_command_limit_counts_utf16_units(self):
+        mach = load_mach()
+        mach._hosts = lambda: [{
+            "id": "h_test", "name": "Desk", "online": True,
+            "platform": "Windows 11",
+        }]
+        mach._call = mock.Mock()
+        command = "echo " + ("🚀" * 4_000)
+
+        with contextlib.redirect_stderr(io.StringIO()), \
+                self.assertRaises(SystemExit):
+            mach.main(["-m", "Desk", command])
+
+        self.assertLess(len(command), mach._MAX_WINDOWS_COMMAND_CHARS)
+        self.assertGreater(
+            mach._windows_command_units(command),
+            mach._MAX_WINDOWS_COMMAND_CHARS,
+        )
+        mach._call.assert_not_called()
+
     def test_silent_remote_failure_has_a_diagnostic(self):
         mach = load_mach()
         mach._hosts = lambda: [{"id": "h_test", "name": "Host", "online": True}]
@@ -287,6 +349,55 @@ class MachTargetingTest(unittest.TestCase):
 
 
 class MachHttpErrorTest(unittest.TestCase):
+    def test_short_calls_use_a_bounded_network_timeout(self):
+        mach = load_mach()
+        response = io.BytesIO(b'{"hosts":[]}')
+        with mock.patch.dict(os.environ, {
+            "API_BASE_URL": "http://mobius.test",
+            "AGENT_TOKEN": "test-token",
+        }), mock.patch.object(
+            mach.urllib.request, "urlopen", return_value=response,
+        ) as urlopen:
+            result = mach._call("/api/connect/hosts")
+
+        self.assertEqual(result, {"hosts": []})
+        self.assertEqual(urlopen.call_args.kwargs["timeout"], 30)
+
+    def test_exec_call_uses_the_remaining_retry_window(self):
+        mach = load_mach()
+        response = io.BytesIO(b'{"stdout":"ready"}')
+        with mock.patch.dict(os.environ, {
+            "API_BASE_URL": "http://mobius.test",
+            "AGENT_TOKEN": "test-token",
+        }), mock.patch.object(
+            mach.urllib.request, "urlopen", return_value=response,
+        ) as urlopen, mock.patch.object(
+            mach.time, "monotonic", return_value=100,
+        ):
+            result = mach._call(
+                "/api/connect/hosts/h/exec",
+                {"request_id": "a" * 16},
+                "POST",
+                retry_until=145,
+            )
+
+        self.assertEqual(result, {"stdout": "ready"})
+        self.assertEqual(urlopen.call_args.kwargs["timeout"], 45)
+
+    def test_success_response_must_be_a_json_object(self):
+        mach = load_mach()
+        response = io.BytesIO(b'[]')
+        with mock.patch.dict(os.environ, {
+            "API_BASE_URL": "http://mobius.test",
+            "AGENT_TOKEN": "test-token",
+        }), mock.patch.object(
+            mach.urllib.request, "urlopen", return_value=response,
+        ), contextlib.redirect_stderr(io.StringIO()), \
+                self.assertRaises(SystemExit) as raised:
+            mach._call("/api/connect/hosts")
+
+        self.assertEqual(raised.exception.code, 2)
+
     def test_transient_exec_failure_retries_the_same_request(self):
         mach = load_mach()
         error = urllib.error.HTTPError(

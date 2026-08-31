@@ -52,11 +52,23 @@ _MAX_COMMAND_CHARS = 64 * 1024
 # Windows runners launch commands through cmd.exe, whose 8,191-character limit
 # also includes its own wrapper text. Keep a small margin for that wrapper.
 _MAX_WINDOWS_COMMAND_CHARS = 8_000
+_DEFAULT_HTTP_TIMEOUT = 30
+_MAX_HTTP_TIMEOUT = 3660
 
 
 def _fail(msg: str, code: int = 1):
     sys.stderr.write(msg.rstrip("\n") + "\n")
     raise SystemExit(code)
+
+
+def _wait_to_retry(retry_until: float | None, delay: int) -> int | None:
+    if retry_until is None:
+        return None
+    remaining = retry_until - time.monotonic()
+    if remaining <= 0:
+        return None
+    time.sleep(min(delay, remaining))
+    return min(delay * 2, 5)
 
 
 def _call(
@@ -80,15 +92,30 @@ def _call(
     delay = 1
     while True:
         try:
-            with urllib.request.urlopen(req, timeout=3660) as resp:
-                return json.loads(resp.read().decode())
+            request_timeout = _DEFAULT_HTTP_TIMEOUT
+            if retry_until is not None:
+                request_timeout = max(
+                    1,
+                    min(
+                        _MAX_HTTP_TIMEOUT,
+                        retry_until - time.monotonic(),
+                    ),
+                )
+            with urllib.request.urlopen(req, timeout=request_timeout) as resp:
+                try:
+                    result = json.loads(resp.read().decode())
+                except (UnicodeError, ValueError):
+                    _fail("mach: Möbius returned an invalid response.", 2)
+                if not isinstance(result, dict):
+                    _fail("mach: Möbius returned an invalid response.", 2)
+                return result
         except urllib.error.HTTPError as exc:
             detail = exc.read().decode(errors="replace")
-            retryable = exc.code in (502, 503)
-            if retryable and retry_until is not None and time.monotonic() < retry_until:
-                time.sleep(min(delay, max(0, retry_until - time.monotonic())))
-                delay = min(delay * 2, 5)
-                continue
+            if exc.code in (502, 503):
+                next_delay = _wait_to_retry(retry_until, delay)
+                if next_delay is not None:
+                    delay = next_delay
+                    continue
             try:
                 parsed = json.loads(detail)
                 if isinstance(parsed, dict) and parsed.get("detail"):
@@ -96,12 +123,17 @@ def _call(
             except ValueError:
                 pass
             _fail(f"mach: {detail}", 2)
-        except urllib.error.URLError as exc:
-            if retry_until is not None and time.monotonic() < retry_until:
-                time.sleep(min(delay, max(0, retry_until - time.monotonic())))
-                delay = min(delay * 2, 5)
+        except (urllib.error.URLError, TimeoutError) as exc:
+            next_delay = _wait_to_retry(retry_until, delay)
+            if next_delay is not None:
+                delay = next_delay
                 continue
-            _fail(f"mach: could not reach Möbius ({exc.reason}).", 2)
+            reason = (
+                exc.reason
+                if isinstance(exc, urllib.error.URLError)
+                else "request timed out"
+            )
+            _fail(f"mach: could not reach Möbius ({reason}).", 2)
 
 
 def _hosts():
@@ -130,6 +162,10 @@ def _matches(hosts, machine):
 
 def _is_windows(platform_name: str | None) -> bool:
     return (platform_name or "").lower().startswith("windows")
+
+
+def _windows_command_units(command: str) -> int:
+    return len(command.encode("utf-16-le", errors="surrogatepass")) // 2
 
 
 def _is_absolute_remote_path(path: str, platform_name: str | None) -> bool:
@@ -176,6 +212,20 @@ def _wrap_script(script: str, shell: str | None, platform_name: str | None) -> s
     return f"exec {shlex.quote(executable)} -c {shlex.quote(script)}"
 
 
+def _read_script() -> str:
+    script = sys.stdin.read(_MAX_COMMAND_CHARS + 1)
+    if not script.strip():
+        _fail("mach: --script received no script on stdin.")
+    if "\x00" in script:
+        _fail("mach: a script cannot contain a NUL byte.")
+    if len(script) > _MAX_COMMAND_CHARS:
+        _fail(
+            "mach: the remote work is larger than 64 KiB; split the work "
+            "or place a script in the project first."
+        )
+    return script
+
+
 def main(argv) -> int:
     machine = None
     timeout = 60
@@ -187,13 +237,16 @@ def main(argv) -> int:
     for tok in it:
         if tok in ("-m", "--machine"):
             machine = next(it, None)
+            if not machine:
+                _fail("mach: -m / --machine needs a machine name.")
         elif tok in ("-t", "--timeout"):
             raw_timeout = next(it, None)
             try:
                 timeout = int(raw_timeout)
             except (TypeError, ValueError):
                 _fail("mach: timeout must be a whole number from 1 to 3600 seconds.")
-            timeout = max(1, min(timeout, 3600))
+            if not 1 <= timeout <= 3600:
+                _fail("mach: timeout must be a whole number from 1 to 3600 seconds.")
         elif tok in ("-C", "--cwd"):
             cwd = next(it, None)
             if not cwd:
@@ -245,11 +298,7 @@ def main(argv) -> int:
         )
 
     if script_mode:
-        script = sys.stdin.read()
-        if not script.strip():
-            _fail("mach: --script received no script on stdin.")
-        if "\x00" in script:
-            _fail("mach: a script cannot contain a NUL byte.")
+        script = _read_script()
         literal_script = int(host.get("runner_protocol") or 1) >= 4
         command = (
             None
@@ -259,15 +308,16 @@ def main(argv) -> int:
     else:
         command = " ".join(cmd_parts)
         literal_script = False
-    if command is not None and _is_windows(host.get("platform")) and (
-        len(command) > _MAX_WINDOWS_COMMAND_CHARS
+    if (
+        command is not None
+        and _is_windows(host.get("platform"))
+        and _windows_command_units(command) > _MAX_WINDOWS_COMMAND_CHARS
     ):
         _fail(
             "mach: the remote command is too large for the Windows shell; "
             "split the work or place a script in the project first."
         )
-    work = script if literal_script else command
-    if len(work) > _MAX_COMMAND_CHARS:
+    if command is not None and len(command) > _MAX_COMMAND_CHARS:
         _fail(
             "mach: the remote work is larger than 64 KiB; split the work "
             "or place a script in the project first."

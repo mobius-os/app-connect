@@ -14,3 +14,9 @@ test('new-machine field and action share one control height', () => {
   assert.match(source, /\.cn-onboard\s*>\s*\.cn-btn\s*\{[^}]*min-height:\s*48px;/s)
   assert.match(source, /\.cn-input\s*\{[^}]*height:\s*48px;/s)
 })
+
+test('new machines start with an editable default name and restore it after creation', () => {
+  assert.match(source, /const DEFAULT_MACHINE_NAME = 'My machine'/)
+  assert.match(source, /useState\(DEFAULT_MACHINE_NAME\)/)
+  assert.match(source, /setNewName\(DEFAULT_MACHINE_NAME\)/)
+})

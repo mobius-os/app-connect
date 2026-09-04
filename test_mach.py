@@ -1,10 +1,8 @@
-import base64
 import contextlib
 import importlib.machinery
 import importlib.util
 import io
 import os
-import shlex
 import unittest
 import urllib.error
 from pathlib import Path
@@ -202,15 +200,15 @@ class MachTargetingTest(unittest.TestCase):
             ])
 
         self.assertEqual(result, 0)
-        self.assertEqual(shlex.split(calls[0][1]["cmd"]), [
-            "exec", "bash", "-c", script,
-        ])
+        self.assertEqual(calls[0][1]["script"], script)
+        self.assertEqual(calls[0][1]["shell"], "bash")
+        self.assertNotIn("cmd", calls[0][1])
 
-    def test_updated_runner_receives_the_literal_script_as_data(self):
+    def test_literal_script_keeps_cwd_as_structured_data(self):
         mach = load_mach()
         mach._hosts = lambda: [{
             "id": "h_test", "name": "Host", "online": True,
-            "platform": "Linux 6.8", "runner_protocol": 4,
+            "platform": "Linux 6.8",
         }]
         calls = []
         mach._call = lambda path, payload=None, method="GET", retry_until=None: (
@@ -236,7 +234,7 @@ class MachTargetingTest(unittest.TestCase):
         mach = load_mach()
         mach._hosts = lambda: [{
             "id": "h_test", "name": "Host", "online": True,
-            "platform": "Linux 6.8", "runner_protocol": 4,
+            "platform": "Linux 6.8",
         }]
         mach._call = mock.Mock()
         stdin = mock.Mock()
@@ -250,11 +248,11 @@ class MachTargetingTest(unittest.TestCase):
         stdin.read.assert_called_once_with(mach._MAX_COMMAND_CHARS + 1)
         mach._call.assert_not_called()
 
-    def test_updated_windows_runner_has_no_cmd_length_ceiling(self):
+    def test_windows_literal_script_has_no_cmd_length_ceiling(self):
         mach = load_mach()
         mach._hosts = lambda: [{
             "id": "h_test", "name": "Desk", "online": True,
-            "platform": "Windows 11", "runner_protocol": 4,
+            "platform": "Windows 11",
         }]
         calls = []
         mach._call = lambda path, payload=None, method="GET", retry_until=None: (
@@ -269,11 +267,11 @@ class MachTargetingTest(unittest.TestCase):
         self.assertEqual(calls[0]["script"], script)
         self.assertNotIn("cmd", calls[0])
 
-    def test_updated_windows_runner_rejects_an_unsupported_shell_locally(self):
+    def test_windows_runner_rejects_an_unsupported_shell_locally(self):
         mach = load_mach()
         mach._hosts = lambda: [{
             "id": "h_test", "name": "Desk", "online": True,
-            "platform": "Windows 11", "runner_protocol": 4,
+            "platform": "Windows 11",
         }]
         mach._call = mock.Mock()
         stderr = io.StringIO()
@@ -285,33 +283,7 @@ class MachTargetingTest(unittest.TestCase):
         mach._call.assert_not_called()
         self.assertIn("supports powershell or pwsh", stderr.getvalue())
 
-    def test_windows_script_uses_powershell_encoded_command(self):
-        mach = load_mach()
-        script = "Write-Output '$name'\n"
-        command = mach._wrap_script(script, None, "Windows 11")
-        encoded = command.rsplit(" ", 1)[1]
 
-        self.assertIn("powershell.exe", command)
-        self.assertEqual(
-            base64.b64decode(encoded).decode("utf-16-le"), script,
-        )
-
-    def test_windows_script_rejects_work_too_large_for_cmd(self):
-        mach = load_mach()
-        mach._hosts = lambda: [{
-            "id": "h_test", "name": "Desk", "online": True,
-            "platform": "Windows 11",
-        }]
-        mach._call = mock.Mock()
-        script = "Write-Output 'ready'\n" + ("#" * 3_000)
-        stderr = io.StringIO()
-
-        with mock.patch.object(mach.sys, "stdin", io.StringIO(script)), \
-                contextlib.redirect_stderr(stderr), self.assertRaises(SystemExit):
-            mach.main(["-m", "Desk", "--script"])
-
-        mach._call.assert_not_called()
-        self.assertIn("too large for the Windows shell", stderr.getvalue())
 
     def test_windows_command_limit_counts_utf16_units(self):
         mach = load_mach()

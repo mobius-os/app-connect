@@ -14,16 +14,9 @@ test('busy is distinct from online and takes precedence over an update', () => {
   }), { cls: 'busy', label: 'Working' })
 })
 
-test('old runner is honest about missing cancellation', () => {
-  assert.deepEqual(commandCapabilities({
-    runner_protocol: 1,
-    active_command: { state: 'running' },
-  }), { canStop: false, stopping: false, state: 'running' })
-})
-
 test('cancel targets the exact host and active command', () => {
   const host = {
-    id: 'h_machine', runner_protocol: 2,
+    id: 'h_machine',
     active_command: { id: 'aabbccddeeff0011', state: 'canceling' },
   }
   assert.deepEqual(commandCapabilities(host), {
@@ -35,6 +28,9 @@ test('cancel targets the exact host and active command', () => {
   )
   assert.equal(cancelCommandPath({ ...host, active_command: null }), null)
   assert.equal(cancelCommandPath({ ...host, id: '' }), null)
+  assert.deepEqual(commandCapabilities({ active_command: { state: 'running' } }), {
+    canStop: false, stopping: false, state: 'running',
+  })
 })
 
 test('online disconnect makes the button primary and explains the local fallback', () => {

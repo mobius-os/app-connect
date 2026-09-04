@@ -12,128 +12,136 @@ const DEFAULT_MACHINE_NAME = 'My machine'
 
 const CSS = `
   * { box-sizing: border-box; }
+  ::selection { background: color-mix(in srgb, #7c67f8 38%, transparent); color: var(--text); }
+  * { scrollbar-width: thin; scrollbar-color: color-mix(in srgb, var(--muted) 45%, transparent) transparent; }
   .cn-root {
-    --cn-violet: #826df6; --cn-mint: #58cdbb; --cn-ink: #29243e;
+    --cn-violet: #7c67f8; --cn-mint: #43c6aa;
     min-height: 100%; color: var(--text); background: var(--bg); font-family: var(--font);
   }
   .cn-head { width: 100%; background: var(--bg); }
-  .cn-head-inner { position: relative; width: min(760px, 100%); margin: 0 auto; display: flex; align-items: center; gap: 11px; padding: max(12px, env(safe-area-inset-top)) 16px 12px; }
+  .cn-head-inner { position: relative; width: min(760px, 100%); margin: 0 auto; display: flex; align-items: center; gap: 10px; padding: max(16px, env(safe-area-inset-top)) 16px 15px; }
   .cn-head-inner::after { content: ''; position: absolute; left: 16px; right: 16px; bottom: 0; height: 1px; background: var(--border); }
-  .cn-mark { flex: 0 0 auto; width: 34px; height: 34px; border-radius: 8px; display: block; object-fit: contain; }
+  .cn-mark { flex: none; width: 30px; height: 30px; border-radius: 8px; display: block; object-fit: contain; }
   .cn-head-copy { min-width: 0; }
-  .cn-title { font-size: 18px; font-weight: 700; letter-spacing: -0.015em; line-height: 1.15; margin: 0; }
-  .cn-sub { color: var(--muted); font-size: 12px; font-weight: 500; margin: 2px 0 0; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .cn-shell { width: min(720px, calc(100% - 32px)); margin: 0 auto; padding: 18px 0 56px; }
+  .cn-title { margin: 0; font-size: 19px; font-weight: 720; letter-spacing: -.018em; line-height: 1; }
+  .cn-sub { margin: 4px 0 0; color: var(--muted); font-size: 11.5px; line-height: 1.2; }
+  .cn-shell { width: min(728px, calc(100% - 32px)); margin: 0 auto; padding: 28px 0 64px; }
 
-  .cn-onboard { padding: 22px 0 24px; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: end; }
-  .cn-onboard > .cn-btn { min-height: 48px; }
+  .cn-section { padding-top: 32px; margin-top: 34px; border-top: 1px solid var(--border); }
+  .cn-section-first { padding-top: 0; margin-top: 0; border-top: 0; }
+  .cn-section-head { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin: 0 0 14px; }
+  .cn-section-heading { display: flex; align-items: center; min-width: 0; gap: 9px; }
+  .cn-secttitle { margin: 0; color: var(--text); font-size: 15px; font-weight: 710; letter-spacing: -.01em; }
+  .cn-count { min-width: 22px; height: 22px; display: inline-grid; place-items: center; padding: 0 7px; border-radius: 999px; color: var(--muted); background: var(--surface-2); font-size: 11px; font-weight: 680; font-variant-numeric: tabular-nums; }
+  .cn-list { overflow: hidden; border: 1px solid var(--border); border-radius: 15px; background: var(--surface); }
+  .cn-empty-row { min-height: 76px; display: flex; align-items: center; justify-content: center; border: 1px dashed color-mix(in srgb, var(--border) 85%, transparent); border-radius: 15px; color: var(--muted); font-size: 13px; }
+
   .cn-field { min-width: 0; }
-  .cn-label { display: block; font-size: 12px; font-weight: 670; color: var(--muted); margin: 0 0 8px 2px; }
-  .cn-input { width: 100%; height: 48px; background: var(--surface); border: 1px solid var(--border); border-radius: 13px; color: var(--text); font: 15px var(--font); padding: 0 14px; }
-  .cn-input::placeholder { color: color-mix(in srgb, var(--muted) 80%, transparent); }
-  .cn-input:focus { outline: 2px solid color-mix(in srgb, var(--cn-violet) 75%, white); outline-offset: 2px; border-color: var(--cn-violet); }
-  .cn-btn { min-height: 44px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; border: 1px solid transparent; border-radius: 12px; padding: 0 17px; background: var(--cn-violet); color: #fff; font: 650 14px var(--font); cursor: pointer; white-space: nowrap; transition: transform 160ms ease-out, background 160ms ease-out, border-color 160ms ease-out; }
+  .cn-label { display: block; margin: 0 0 7px 1px; color: var(--muted); font-size: 11.5px; font-weight: 650; }
+  .cn-input { width: 100%; height: 46px; padding: 0 13px; border: 1px solid var(--border); border-radius: 11px; color: var(--text); background: var(--bg); caret-color: var(--cn-violet); font: 14px var(--font); }
+  .cn-input::placeholder { color: color-mix(in srgb, var(--muted) 78%, transparent); }
+  .cn-input:focus { outline: 2px solid color-mix(in srgb, var(--cn-violet) 58%, transparent); outline-offset: 1px; border-color: var(--cn-violet); }
+  .cn-btn { min-height: 42px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; padding: 0 15px; border: 1px solid transparent; border-radius: 11px; background: var(--cn-violet); color: #fff; font: 650 13px var(--font); cursor: pointer; white-space: nowrap; transition: background 160ms ease-out, transform 160ms ease-out; }
   .cn-btn:hover:not(:disabled) { background: color-mix(in srgb, var(--cn-violet) 88%, white); }
   .cn-btn:active:not(:disabled) { transform: scale(.98); }
-  .cn-btn:disabled { opacity: .52; cursor: default; }
-  .cn-btn:focus-visible, .cn-host-namebtn:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
-  .cn-btn-ghost { background: transparent; color: var(--text); border-color: var(--border); }
+  .cn-btn:disabled { opacity: .48; cursor: default; }
+  .cn-btn:focus-visible, .cn-host-namebtn:focus-visible, .cn-host-toggle:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
+  .cn-btn-ghost { color: var(--text); background: transparent; border-color: var(--border); }
   .cn-btn-ghost:hover:not(:disabled) { background: var(--surface-2); }
-  .cn-btn-danger { background: #c9363e; color: #fff; }
-  .cn-btn-sm { min-height: 44px; padding: 0 14px; font-size: 13px; }
+  .cn-btn-danger { color: #fff; background: #c9363e; }
+  .cn-btn-danger:hover:not(:disabled) { background: #d6464e; }
+  .cn-btn-sm { min-height: 40px; padding: 0 13px; font-size: 12.5px; }
 
-  .cn-message { padding: 14px 16px; border-radius: 12px; margin: 0 0 16px; font-size: 13.5px; line-height: 1.5; }
-  .cn-error { color: #9e242a; background: color-mix(in srgb, #e5484d 10%, var(--surface)); border: 1px solid color-mix(in srgb, #e5484d 35%, var(--border)); }
+  .cn-inline-form { margin: 0 0 14px; padding: 16px; border: 1px solid var(--border); border-radius: 14px; background: var(--surface); }
+  .cn-machine-form { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: end; }
+  .cn-machine-form > .cn-btn { min-height: 46px; }
+  .cn-share-grid { display: grid; grid-template-columns: 1fr; gap: 13px; }
+  .cn-command-input { min-height: 76px; resize: vertical; padding-top: 11px; padding-bottom: 9px; font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .cn-form-footer { display: flex; align-items: center; justify-content: space-between; gap: 18px; margin-top: 13px; }
+  .cn-share-warning { margin: 0; color: var(--muted); font-size: 11.5px; line-height: 1.4; }
+
+  .cn-message { margin: 0 0 16px; padding: 12px 14px; border-radius: 12px; font-size: 13px; line-height: 1.45; }
+  .cn-error { color: #ffb7ba; background: color-mix(in srgb, #e5484d 12%, var(--surface)); border: 1px solid color-mix(in srgb, #e5484d 34%, var(--border)); }
   .cn-notice { background: var(--surface); border: 1px solid var(--border); }
-  .cn-notice strong { display: block; margin-bottom: 3px; }
+  .cn-notice strong { display: block; margin-bottom: 2px; }
+  .cn-loading { padding: 50px 0; color: var(--muted); font-size: 13px; text-align: center; }
 
-  .cn-pairing { position: relative; overflow: hidden; background: var(--surface); border: 1px solid color-mix(in srgb, var(--cn-violet) 36%, var(--border)); border-radius: 18px; padding: 18px; margin: 2px 0 24px; }
-  .cn-pairing::before { content: ''; position: absolute; top: 0; left: 0; width: 100%; height: 3px; background: linear-gradient(90deg, var(--cn-violet), var(--cn-mint)); }
-  .cn-card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 17px; }
-  .cn-card-title { font-size: 16px; font-weight: 700; margin: 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .cn-card-title span { color: var(--cn-violet); }
-  .cn-step { display: grid; grid-template-columns: 25px minmax(0, 1fr); gap: 11px; margin-top: 15px; }
-  .cn-step-n { width: 24px; height: 24px; border-radius: 50%; background: color-mix(in srgb, var(--cn-violet) 14%, var(--surface)); color: var(--cn-violet); font-size: 12px; font-weight: 750; display: grid; place-items: center; }
-  .cn-step-t { font-size: 13.5px; line-height: 1.5; margin: 2px 0 8px; }
-  .cn-code-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: stretch; }
-  .cn-code { min-width: 0; max-height: 106px; overflow: auto; padding: 11px 12px; border-radius: 10px; background: var(--bg); border: 1px solid var(--border); color: var(--text); font: 12px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; overflow-wrap: anywhere; cursor: text; user-select: all; -webkit-user-select: all; }
-  .cn-hint { color: var(--muted); font-size: 12px; line-height: 1.5; margin-top: 7px; }
-  .cn-copybtn { min-width: 132px; }
-  .cn-copybtn.is-copied { color: #168462; border-color: color-mix(in srgb, var(--cn-mint) 42%, var(--border)); background: color-mix(in srgb, var(--cn-mint) 10%, var(--surface)); }
-
-  .cn-section-head { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; margin: 25px 2px 10px; }
-  .cn-secttitle { font-size: 13px; font-weight: 720; margin: 0; }
-  .cn-count { color: var(--muted); font-size: 12px; }
-  .cn-list { border-top: 1px solid var(--border); }
-  .cn-host { position: relative; min-height: 76px; display: flex; align-items: center; gap: 14px; padding: 14px 2px; border-bottom: 1px solid var(--border); }
-  .cn-host.is-confirming { flex-wrap: wrap; }
-  .cn-host-toggle { position: absolute; z-index: 0; inset: 0 0 auto; width: 100%; height: 75px; border: 0; border-radius: 10px; background: transparent; cursor: pointer; }
-  .cn-host-toggle:hover:not(:disabled) { background: color-mix(in srgb, var(--surface-2) 45%, transparent); }
+  .cn-host, .cn-outbound { position: relative; min-height: 72px; display: flex; align-items: center; gap: 13px; padding: 13px 15px; border-bottom: 1px solid var(--border); }
+  .cn-host:last-child, .cn-outbound:last-child { border-bottom: 0; }
+  .cn-host.is-confirming, .cn-outbound.is-confirming { flex-wrap: wrap; }
+  .cn-host-toggle { position: absolute; z-index: 0; inset: 0 0 auto; width: 100%; height: 71px; border: 0; border-radius: 14px; background: transparent; cursor: pointer; }
+  .cn-host-toggle:hover:not(:disabled) { background: color-mix(in srgb, var(--surface-2) 48%, transparent); }
   .cn-host-toggle:disabled { cursor: default; }
-  .cn-host-toggle:focus-visible { outline: 2px solid var(--text); outline-offset: -2px; }
-  .cn-host-symbol { position: relative; z-index: 1; pointer-events: none; flex: none; width: 36px; height: 36px; display: grid; place-items: center; border-radius: 11px; color: var(--muted); background: var(--surface); border: 1px solid var(--border); }
-  .cn-host-symbol.on { color: #168462; background: color-mix(in srgb, var(--cn-mint) 10%, var(--surface)); border-color: color-mix(in srgb, var(--cn-mint) 24%, var(--border)); }
-  .cn-host-body { position: relative; z-index: 1; pointer-events: none; flex: 1; min-width: 0; }
+  .cn-host-symbol { position: relative; z-index: 1; pointer-events: none; flex: none; width: 38px; height: 38px; display: grid; place-items: center; border-radius: 11px; color: var(--muted); background: var(--surface-2); }
+  .cn-host-symbol.on { color: #36b999; background: color-mix(in srgb, var(--cn-mint) 13%, var(--surface-2)); }
+  .cn-host-body, .cn-outbound-copy { position: relative; z-index: 1; flex: 1; min-width: 0; }
+  .cn-host-body { pointer-events: none; }
   .cn-host-top { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
-  .cn-host-namebtn { pointer-events: auto; max-width: min(100%, 44ch); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin: -5px; padding: 5px; border: 0; border-radius: 6px; background: transparent; color: var(--text); font: 650 15px var(--font); text-align: left; cursor: text; }
-  .cn-host-namebtn:hover { background: var(--surface-2); text-decoration: underline; text-underline-offset: 3px; }
-  .cn-host-meta { color: var(--muted); font-size: 12.5px; margin-top: 4px; }
-  .cn-toggle-mark { position: relative; z-index: 1; pointer-events: none; flex: none; width: 32px; height: 32px; display: grid; place-items: center; color: var(--muted); transition: transform 160ms ease-out; }
+  .cn-host-namebtn { pointer-events: auto; max-width: min(100%, 44ch); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin: -4px; padding: 4px; border: 0; border-radius: 6px; color: var(--text); background: transparent; font: 650 14px var(--font); text-align: left; cursor: text; }
+  .cn-host-namebtn:hover { background: var(--surface-2); }
+  .cn-outbound-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); font-size: 14px; font-weight: 650; }
+  .cn-host-meta, .cn-outbound-meta { display: block; margin-top: 4px; color: var(--muted); font-size: 11.5px; }
+  .cn-pill { display: inline-flex; align-items: center; gap: 5px; padding: 3px 7px; border-radius: 999px; color: var(--muted); background: var(--surface-2); font-size: 10.5px; font-weight: 680; }
+  .cn-pill-dot { position: relative; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+  .cn-pill.on { color: #36b999; background: color-mix(in srgb, var(--cn-mint) 12%, var(--surface-2)); }
+  .cn-pill.wait { color: #d7a848; background: color-mix(in srgb, #d7a848 11%, var(--surface-2)); }
+  .cn-pill.busy { color: #a99afc; background: color-mix(in srgb, var(--cn-violet) 14%, var(--surface-2)); }
+  .cn-pill.on .cn-pill-dot::after, .cn-pill.busy .cn-pill-dot::after { content: ''; position: absolute; inset: -3px; border: 1px solid currentColor; border-radius: 50%; animation: cn-pulse 1.8s ease-out infinite; }
+  .cn-toggle-mark { position: relative; z-index: 1; pointer-events: none; flex: none; width: 28px; height: 28px; display: grid; place-items: center; color: var(--muted); transition: transform 160ms ease-out; }
   .cn-toggle-mark.is-open { transform: rotate(180deg); }
-  .cn-toggle-mark svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-  .cn-disconnect { flex: 0 0 calc(100% - 50px); margin: 2px 0 1px 50px; padding: 15px; border-radius: 13px; background: var(--surface); border: 1px solid var(--border); }
-  .cn-disconnect-title { margin: 0 0 5px; font-size: 13.5px; font-weight: 700; }
-  .cn-disconnect-copy { margin: 0 0 12px; color: var(--muted); font-size: 12.5px; line-height: 1.5; }
-  .cn-disconnect-alt { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border); }
-  .cn-disconnect-alt-title { margin: 0 0 4px; font-size: 12.5px; font-weight: 700; }
-  .cn-disconnect-alt-copy { margin: 0 0 10px; color: var(--muted); font-size: 12px; line-height: 1.5; }
-  .cn-disconnect-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin: 4px 0 0; }
-  .cn-command { flex: 0 0 calc(100% - 50px); margin: 2px 0 1px 50px; padding: 14px 15px; border-radius: 13px; background: color-mix(in srgb, var(--cn-violet) 6%, var(--surface)); border: 1px solid color-mix(in srgb, var(--cn-violet) 22%, var(--border)); }
-  .cn-command-row { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
+  .cn-toggle-mark svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+  .cn-disconnect, .cn-command, .cn-update { flex: 0 0 calc(100% - 51px); margin: 2px 0 2px 51px; padding: 13px 14px; border-radius: 12px; background: var(--surface-2); }
+  .cn-disconnect-title, .cn-command-title, .cn-update-title { margin: 0 0 4px; font-size: 13px; font-weight: 680; }
+  .cn-disconnect-copy, .cn-command-meta, .cn-update-copy { margin: 0 0 10px; color: var(--muted); font-size: 12px; line-height: 1.45; }
+  .cn-disconnect-actions, .cn-command-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
+  .cn-disconnect-alt, .cn-command-confirm { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); }
+  .cn-disconnect-alt-title { margin: 0 0 3px; font-size: 12px; font-weight: 680; }
+  .cn-disconnect-alt-copy, .cn-command-confirm p { margin: 0 0 9px; color: var(--muted); font-size: 11.5px; line-height: 1.45; }
+  .cn-command-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
   .cn-command-copy { min-width: 0; }
-  .cn-command-title { margin: 0; font-size: 13.5px; font-weight: 700; }
-  .cn-command-meta { margin: 4px 0 0; color: var(--muted); font-size: 12.5px; line-height: 1.45; }
-  .cn-command-confirm { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); }
-  .cn-command-confirm p { margin: 0 0 10px; color: var(--muted); font-size: 12.5px; line-height: 1.5; }
-  .cn-command-actions { display: flex; justify-content: flex-end; gap: 8px; }
-  .cn-update { flex: 0 0 calc(100% - 50px); margin: 2px 0 1px 50px; padding: 14px 15px; border-radius: 13px; background: var(--surface); border: 1px solid var(--border); }
-  .cn-update-title { margin: 0 0 4px; font-size: 13.5px; font-weight: 700; }
-  .cn-update-copy { margin: 0 0 11px; color: var(--muted); font-size: 12.5px; line-height: 1.5; }
+  .cn-outbound-confirm { flex-basis: 100%; margin-left: 51px; color: var(--muted); font-size: 12px; }
+  .cn-outbound-actions { display: flex; justify-content: flex-end; gap: 8px; width: 100%; }
+
+  .cn-pairing { margin: 0 0 14px; padding: 15px; border-radius: 14px; background: var(--surface); border: 1px solid color-mix(in srgb, var(--cn-violet) 34%, var(--border)); }
+  .cn-card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+  .cn-card-title { margin: 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; font-weight: 680; }
+  .cn-card-title span { color: #a99afc; }
+  .cn-step { display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 9px; margin-top: 12px; }
+  .cn-step-n { width: 22px; height: 22px; display: grid; place-items: center; border-radius: 50%; color: #a99afc; background: color-mix(in srgb, var(--cn-violet) 13%, var(--surface-2)); font-size: 11px; font-weight: 720; }
+  .cn-step-t { margin: 2px 0 7px; font-size: 12.5px; line-height: 1.45; }
+  .cn-code-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: stretch; }
+  .cn-code { min-width: 0; max-height: 100px; overflow: auto; padding: 10px 11px; border-radius: 9px; background: var(--bg); border: 1px solid var(--border); color: var(--text); font: 11.5px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; overflow-wrap: anywhere; cursor: text; user-select: all; -webkit-user-select: all; }
+  .cn-hint { margin-top: 6px; color: var(--muted); font-size: 11.5px; line-height: 1.4; }
+  .cn-copybtn { min-width: 120px; }
+  .cn-copybtn.is-copied { color: #36b999; border-color: color-mix(in srgb, var(--cn-mint) 35%, var(--border)); background: color-mix(in srgb, var(--cn-mint) 9%, var(--surface)); }
+
   .cn-rename { pointer-events: auto; display: flex; align-items: center; gap: 8px; width: 100%; }
-  .cn-rename .cn-input { height: 42px; flex: 1; min-width: 0; }
+  .cn-rename .cn-input { height: 40px; flex: 1; min-width: 0; }
   .cn-rename-actions { display: flex; gap: 8px; flex: none; }
-  .cn-pill { display: inline-flex; align-items: center; gap: 6px; border-radius: 999px; padding: 3px 8px; font-size: 11px; font-weight: 670; color: var(--muted); background: var(--surface-2); }
-  .cn-pill-dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; position: relative; }
-  .cn-pill.on { color: #168462; background: color-mix(in srgb, var(--cn-mint) 13%, var(--surface)); }
-  .cn-pill.wait { color: #9b6d00; background: color-mix(in srgb, #e0a63a 13%, var(--surface)); }
-  .cn-pill.busy { color: var(--cn-violet); background: color-mix(in srgb, var(--cn-violet) 13%, var(--surface)); }
-  .cn-pill.busy .cn-pill-dot::after { content: ''; position: absolute; inset: -3px; border: 1px solid currentColor; border-radius: 50%; animation: cn-pulse 1.4s ease-out infinite; }
-  .cn-pill.on .cn-pill-dot::after { content: ''; position: absolute; inset: -3px; border: 1px solid currentColor; border-radius: 50%; animation: cn-pulse 2s ease-out infinite; }
-  .cn-empty { padding: 46px 10px 28px; text-align: center; color: var(--muted); }
-  .cn-empty-mark { width: 46px; height: 30px; margin: 0 auto 13px; position: relative; opacity: .72; }
-  .cn-empty-mark::before, .cn-empty-mark::after { content: ''; position: absolute; top: 5px; width: 18px; height: 18px; border-radius: 50%; border: 2px solid var(--border); background: var(--bg); }
-  .cn-empty-mark::before { left: 0; } .cn-empty-mark::after { right: 0; }
-  .cn-empty-mark span { position: absolute; left: 15px; top: 13px; width: 17px; height: 2px; background: var(--border); }
-  .cn-empty-t { margin: 0 0 5px; color: var(--text); font-size: 15px; font-weight: 680; }
-  .cn-empty-b { max-width: 47ch; margin: 0 auto; font-size: 13.5px; line-height: 1.55; }
-  .cn-loading { padding: 42px 0; color: var(--muted); font-size: 13px; text-align: center; }
-  @keyframes cn-pulse { from { transform: scale(.7); opacity: .75; } to { transform: scale(1.8); opacity: 0; } }
-  @media (prefers-reduced-motion: reduce) { .cn-pill.on .cn-pill-dot::after, .cn-pill.busy .cn-pill-dot::after { animation: none; } .cn-btn, .cn-toggle-mark { transition: none; } }
+
+  @keyframes cn-pulse { from { transform: scale(.7); opacity: .72; } to { transform: scale(1.9); opacity: 0; } }
+  @media (prefers-reduced-motion: reduce) { .cn-pill-dot::after { animation: none !important; } .cn-btn, .cn-toggle-mark { transition: none; } }
   @media (max-width: 560px) {
-    .cn-shell { width: calc(100% - 32px); }
-    .cn-onboard { grid-template-columns: 1fr; align-items: stretch; }
-    .cn-onboard > .cn-btn { width: 100%; }
-    .cn-host { align-items: center; flex-wrap: nowrap; padding: 15px 2px; }
-    .cn-host-body { padding-top: 0; }
-    .cn-disconnect { flex-basis: 100%; margin-left: 0; }
-    .cn-command, .cn-update { flex-basis: 100%; margin-left: 0; }
+    .cn-head-inner { padding-left: 14px; padding-right: 14px; }
+    .cn-head-inner::after { left: 14px; right: 14px; }
+    .cn-shell { width: calc(100% - 24px); padding-top: 22px; }
+    .cn-section { padding-top: 26px; margin-top: 28px; }
+    .cn-section-first { padding-top: 0; margin-top: 0; }
+    .cn-section-head { align-items: center; }
+    .cn-secttitle { font-size: 14px; }
+    .cn-machine-form { grid-template-columns: 1fr; }
+    .cn-machine-form > .cn-btn { width: 100%; }
+    .cn-form-footer { align-items: stretch; flex-direction: column; gap: 10px; }
+    .cn-form-footer .cn-btn { width: 100%; }
+    .cn-host, .cn-outbound { padding-left: 12px; padding-right: 12px; }
+    .cn-disconnect, .cn-command, .cn-update { flex-basis: 100%; margin-left: 0; }
     .cn-command-row { align-items: stretch; flex-direction: column; }
     .cn-command-row .cn-btn { width: 100%; }
-    .cn-command-actions { align-items: stretch; flex-direction: column-reverse; }
-    .cn-command-actions .cn-btn { width: 100%; }
-    .cn-disconnect-actions { align-items: stretch; flex-direction: column-reverse; }
-    .cn-disconnect-actions .cn-btn { width: 100%; }
-    .cn-menu { flex-basis: 100%; margin-left: 0; }
+    .cn-disconnect-actions, .cn-command-actions { align-items: stretch; flex-direction: column-reverse; }
+    .cn-disconnect-actions .cn-btn, .cn-command-actions .cn-btn { width: 100%; }
+    .cn-outbound-confirm { margin-left: 0; }
+    .cn-outbound-actions .cn-btn { flex: 1; }
     .cn-rename { flex-wrap: wrap; }
     .cn-rename .cn-input { flex-basis: 100%; }
     .cn-rename-actions { width: 100%; }
@@ -272,6 +280,90 @@ function DisconnectPanel({ host, busy, copiedKey, failedKey, onCopy, onPair, onR
   </div>
 }
 
+function OutboundAccess({
+  connections, open, label, command, granting, confirmingId, revokingId,
+  onOpen, onCancel, onLabel, onCommand, onGrant, onConfirm, onKeep, onRevoke,
+}) {
+  return <section className="cn-section" aria-labelledby="cn-access-title">
+    <div className="cn-section-head">
+      <div className="cn-section-heading">
+        <h2 className="cn-secttitle" id="cn-access-title">Can control this Möbius</h2>
+        <span className="cn-count">{connections.length}</span>
+      </div>
+      <button className="cn-btn cn-btn-ghost cn-btn-sm" onClick={open ? onCancel : onOpen}>
+        {open ? 'Cancel' : <><Plus size={16}/>Grant access</>}
+      </button>
+    </div>
+
+    {open ? <div className="cn-inline-form cn-access-form">
+      <div className="cn-share-grid">
+        <label className="cn-field">
+          <span className="cn-label">Name</span>
+          <input
+            className="cn-input"
+            value={label}
+            maxLength={80}
+            autoFocus
+            placeholder="Alex’s Möbius"
+            onChange={event => onLabel(event.target.value)}
+          />
+        </label>
+        <label className="cn-field">
+          <span className="cn-label">Connect command</span>
+          <textarea
+            className="cn-input cn-command-input"
+            value={command}
+            rows={1}
+            spellCheck={false}
+            placeholder="Paste their curl … | sh command"
+            onChange={event => onCommand(event.target.value)}
+          />
+        </label>
+      </div>
+      <div className="cn-form-footer">
+        <p className="cn-share-warning">Full command access until you revoke it.</p>
+        <button className="cn-btn" onClick={onGrant} disabled={granting || !label.trim() || !command.trim()}>
+          {granting ? 'Connecting…' : 'Grant access'}
+        </button>
+      </div>
+    </div> : null}
+
+    {connections.length ? <div className="cn-list" aria-label="Machines that can control this Möbius">
+      {connections.map(connection => {
+        const confirming = confirmingId === connection.id
+        const status = connection.online ? 'Active' : (connection.status === 'ended' ? 'Ended' : 'Needs attention')
+        const statusClass = connection.online ? 'on' : (connection.status === 'ended' ? '' : 'wait')
+        return <article className={`cn-outbound${confirming ? ' is-confirming' : ''}`} key={connection.id}>
+          <div className={`cn-host-symbol${connection.online ? ' on' : ''}`} aria-hidden="true">
+            <Desktop size={20}/>
+          </div>
+          <div className="cn-outbound-copy">
+            <div className="cn-host-top">
+              <span className="cn-outbound-name">{connection.label}</span>
+              <span className={`cn-pill ${statusClass}`}><span className="cn-pill-dot" aria-hidden="true"/>{status}</span>
+            </div>
+            <span className="cn-outbound-meta">{connection.target}</span>
+          </div>
+          {!confirming ? <button
+            className="cn-btn cn-btn-ghost cn-btn-sm"
+            onClick={() => onConfirm(connection.id)}
+            disabled={revokingId === connection.id}
+          >{connection.online ? 'Revoke' : 'Remove'}</button> : null}
+          {confirming ? <>
+            <div className="cn-outbound-confirm">Revoke access for {connection.label}?</div>
+            <div className="cn-outbound-actions">
+              <button className="cn-btn cn-btn-ghost cn-btn-sm" onClick={onKeep} disabled={revokingId === connection.id}>Keep</button>
+              <button className="cn-btn cn-btn-danger cn-btn-sm" onClick={() => onRevoke(connection)} disabled={revokingId === connection.id}>
+                {revokingId === connection.id ? 'Revoking…' : 'Revoke access'}
+              </button>
+            </div>
+          </> : null}
+        </article>
+      })}
+    </div> : <div className="cn-empty-row">No machines have access.</div>}
+  </section>
+}
+
 function CommandPanel({ host, confirming, stopping, onConfirm, onKeep, onStop }) {
   const command = host.active_command || {}
   const capabilities = commandCapabilities(host)
@@ -285,7 +377,7 @@ function CommandPanel({ host, confirming, stopping, onConfirm, onKeep, onStop })
       <div className="cn-command-copy">
         <p className="cn-command-title">{stoppingNow ? 'Stopping command…' : 'Command in progress'}</p>
         <p className="cn-command-meta">
-          {canStop ? `${started}${limit}` : 'This runner is still working, but it must be updated before Connect can stop commands remotely.'}
+          {canStop ? `${started}${limit}` : 'Connect is waiting for the command details before it can offer a stop action.'}
         </p>
       </div>
       {canStop && !confirming ? <button
@@ -314,7 +406,7 @@ function UpdatePanel({ host, copiedKey, failedKey, onCopy, onSelect }) {
   return <div className="cn-update">
     <p className="cn-update-title">Update the Connect runner</p>
     <p className="cn-update-copy">
-      Run this on {host.name}. It keeps the existing pairing and switches to the more compatible reconnecting HTTPS runner.
+      Run this on {host.name}. It keeps the existing pairing and installs the current reconnecting HTTPS runner.
     </p>
     <CopyCommand
       command={host.update_command}
@@ -419,8 +511,11 @@ function MachineRow({
 
 export default function App({ appId, token }) {
   const [hosts, setHosts] = useState([])
+  const [outbound, setOutbound] = useState([])
   const [serviceActive, setServiceActive] = useState(null)
+  const [outboundActive, setOutboundActive] = useState(null)
   const [newName, setNewName] = useState(DEFAULT_MACHINE_NAME)
+  const [addingMachine, setAddingMachine] = useState(false)
   const [pairing, setPairing] = useState(null)
   const [confirmingId, setConfirmingId] = useState(null)
   const [renamingId, setRenamingId] = useState(null)
@@ -430,6 +525,12 @@ export default function App({ appId, token }) {
   const [deletingId, setDeletingId] = useState(null)
   const [stopConfirmingId, setStopConfirmingId] = useState(null)
   const [stoppingId, setStoppingId] = useState(null)
+  const [accessLabel, setAccessLabel] = useState('')
+  const [accessCommand, setAccessCommand] = useState('')
+  const [sharingOpen, setSharingOpen] = useState(false)
+  const [grantingAccess, setGrantingAccess] = useState(false)
+  const [outboundConfirmId, setOutboundConfirmId] = useState(null)
+  const [revokingOutboundId, setRevokingOutboundId] = useState(null)
   const [error, setError] = useState(null)
   const readySignalled = useRef(false)
   const loadSequence = useRef(0)
@@ -443,7 +544,10 @@ export default function App({ appId, token }) {
   const load = useCallback(async () => {
     const sequence = ++loadSequence.current
     try {
-      const response = await fetch('/api/connect/hosts', { headers: headers() })
+      const [response, outboundResponse] = await Promise.all([
+        fetch('/api/connect/hosts', { headers: headers() }),
+        fetch('/api/connect/outbound', { headers: headers() }),
+      ])
       if (sequence !== loadSequence.current) return
       if ([404, 501, 503].includes(response.status)) {
         setServiceActive(false)
@@ -455,12 +559,24 @@ export default function App({ appId, token }) {
       }
       const data = await response.json()
       const nextHosts = Array.isArray(data.hosts) ? data.hosts : []
+      let nextOutbound = []
+      if ([404, 501, 503].includes(outboundResponse.status)) {
+        setOutboundActive(false)
+        setOutbound([])
+      } else if (!outboundResponse.ok) {
+        throw new Error(await responseError(outboundResponse, 'Couldn’t refresh shared access.'))
+      } else {
+        const outboundData = await outboundResponse.json()
+        nextOutbound = Array.isArray(outboundData.connections) ? outboundData.connections : []
+        setOutboundActive(true)
+        setOutbound(nextOutbound)
+      }
       setServiceActive(true)
       setHosts(nextHosts)
       setError(null)
       if (!readySignalled.current) {
         readySignalled.current = true
-        window.mobius.signal('app_ready', { item_count: nextHosts.length })
+        window.mobius.signal('app_ready', { item_count: nextHosts.length + nextOutbound.length })
       }
     } catch (cause) {
       if (sequence !== loadSequence.current) return
@@ -514,6 +630,7 @@ export default function App({ appId, token }) {
       }
       setPairing(await response.json())
       setNewName(DEFAULT_MACHINE_NAME)
+      setAddingMachine(false)
       window.mobius.signal('item_created', { type: 'machine' })
       await load()
     } catch (cause) {
@@ -617,6 +734,56 @@ export default function App({ appId, token }) {
     }
   }, [headers, load, stoppingId])
 
+  const grantOutboundAccess = useCallback(async () => {
+    const label = accessLabel.trim()
+    const command = accessCommand.trim()
+    if (!label || !command || grantingAccess) return
+    setGrantingAccess(true)
+    setError(null)
+    try {
+      const response = await fetch('/api/connect/outbound', {
+        method: 'POST',
+        headers: headers({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({ label, command }),
+      })
+      if (!response.ok) {
+        throw new Error(await responseError(response, 'Couldn’t grant access.'))
+      }
+      setAccessLabel('')
+      setAccessCommand('')
+      setSharingOpen(false)
+      window.mobius.signal('item_created', { type: 'outbound_access' })
+      await load()
+    } catch (cause) {
+      setError(cause.message || 'Couldn’t grant access.')
+    } finally {
+      setGrantingAccess(false)
+    }
+  }, [accessCommand, accessLabel, grantingAccess, headers, load])
+
+  const revokeOutboundAccess = useCallback(async (connection) => {
+    if (revokingOutboundId) return
+    setRevokingOutboundId(connection.id)
+    setError(null)
+    try {
+      const response = await fetch(`/api/connect/outbound/${connection.id}`, {
+        method: 'DELETE',
+        headers: headers(),
+      })
+      if (!response.ok && response.status !== 404) {
+        throw new Error(await responseError(response, 'Couldn’t confirm that access was revoked.'))
+      }
+      setOutboundConfirmId(null)
+      setOutbound(current => current.filter(item => item.id !== connection.id))
+      window.mobius.signal('item_deleted', { type: 'outbound_access' })
+      await load()
+    } catch (cause) {
+      setError(cause.message || 'Couldn’t revoke this access.')
+    } finally {
+      setRevokingOutboundId(null)
+    }
+  }, [headers, load, revokingOutboundId])
+
   const selectCommand = useCallback((event) => {
     const selection = window.getSelection()
     const range = document.createRange()
@@ -632,36 +799,51 @@ export default function App({ appId, token }) {
         <BrandMark appId={appId}/>
         <div className="cn-head-copy">
           <h1 className="cn-title">Connect</h1>
-          <p className="cn-sub">Secure access to your paired machines.</p>
+          <p className="cn-sub">Remote access, both ways.</p>
         </div>
       </div>
     </header>
     <main className="cn-shell">
-      <div className="cn-main">
-        <div aria-live="polite">
-          {error ? <div className="cn-message cn-error">
-            {error} Try again, or check that Möbius is online.
-          </div> : null}
-          {serviceActive === false ? <div className="cn-message cn-notice">
-            <strong>Connect needs a restart</strong>
-            The service is installed, but it won’t accept machines until Möbius restarts.
-          </div> : null}
+      <div aria-live="polite">
+        {error ? <div className="cn-message cn-error">{error}</div> : null}
+        {serviceActive === false ? <div className="cn-message cn-notice">
+          <strong>Restart needed</strong>
+          Connect will be available after Möbius restarts.
+        </div> : null}
+        {serviceActive === true && outboundActive === false ? <div className="cn-message cn-notice">
+          <strong>Restart needed</strong>
+          Shared access will be available after Möbius restarts.
+        </div> : null}
+      </div>
+
+      {serviceActive === null ? <div className="cn-loading" role="status">Loading Connect…</div> : null}
+
+      {serviceActive === true ? <section className="cn-section cn-section-first" aria-labelledby="cn-machines">
+        <div className="cn-section-head">
+          <div className="cn-section-heading">
+            <h2 className="cn-secttitle" id="cn-machines">Machines you control</h2>
+            <span className="cn-count">{hosts.length}</span>
+          </div>
+          <button className="cn-btn cn-btn-ghost cn-btn-sm" onClick={() => setAddingMachine(open => !open)}>
+            {addingMachine ? 'Cancel' : <><Plus size={16}/>Add machine</>}
+          </button>
         </div>
 
-        {serviceActive !== false ? <div className="cn-onboard">
+        {addingMachine ? <div className="cn-inline-form cn-machine-form">
           <label className="cn-field">
-            <span className="cn-label">New machine</span>
+            <span className="cn-label">Name</span>
             <input
               className="cn-input"
-              placeholder="For example, MacBook or GPU workstation"
+              placeholder="My MacBook"
               value={newName}
               maxLength={80}
+              autoFocus
               onChange={event => setNewName(event.target.value)}
               onKeyDown={event => { if (event.key === 'Enter') addMachine() }}
             />
           </label>
           <button className="cn-btn" onClick={addMachine} disabled={creating}>
-            {creating ? 'Creating…' : <><Plus size={18}/>Add machine</>}
+            {creating ? 'Creating…' : 'Continue'}
           </button>
         </div> : null}
 
@@ -674,62 +856,68 @@ export default function App({ appId, token }) {
           onSelect={selectCommand}
         /> : null}
 
-        {serviceActive === null ? <div className="cn-loading" role="status">
-          Checking your machines…
-        </div> : null}
+        {hosts.length ? <div className="cn-list">
+          {hosts.map(host => <MachineRow
+            key={host.id}
+            host={host}
+            confirming={confirmingId === host.id}
+            deleting={deletingId === host.id}
+            renaming={renamingId === host.id}
+            renameValue={renameValue}
+            saving={savingId === host.id}
+            stopConfirming={stopConfirmingId === host.id}
+            stopping={stoppingId === host.id}
+            copiedKey={copiedKey}
+            failedKey={failedKey}
+            onCopy={copy}
+            onConfirm={() => {
+              setStopConfirmingId(null)
+              setRenamingId(null)
+              setConfirmingId(current => current === host.id ? null : host.id)
+            }}
+            onPair={() => showCommand(host.id)}
+            onRemove={() => removeMachine(host)}
+            onSelect={selectCommand}
+            onRenameStart={() => {
+              setStopConfirmingId(null)
+              setConfirmingId(null)
+              startRename(host)
+            }}
+            onRenameChange={setRenameValue}
+            onRenameSave={() => saveRename(host)}
+            onRenameCancel={() => setRenamingId(null)}
+            onStopConfirm={() => {
+              setConfirmingId(null)
+              setRenamingId(null)
+              setStopConfirmingId(host.id)
+            }}
+            onStopKeep={() => setStopConfirmingId(null)}
+            onStop={() => stopCommand(host)}
+          />)}
+        </div> : <div className="cn-empty-row">No machines added.</div>}
+      </section> : null}
 
-        {serviceActive === true && hosts.length > 0 ? <section aria-labelledby="cn-machines">
-          <div className="cn-section-head">
-            <h2 className="cn-secttitle" id="cn-machines">Your machines</h2>
-            <span className="cn-count">{hosts.length} {hosts.length === 1 ? 'machine' : 'machines'}</span>
-          </div>
-          <div className="cn-list">
-            {hosts.map(host => <MachineRow
-              key={host.id}
-              host={host}
-              confirming={confirmingId === host.id}
-              deleting={deletingId === host.id}
-              renaming={renamingId === host.id}
-              renameValue={renameValue}
-              saving={savingId === host.id}
-              stopConfirming={stopConfirmingId === host.id}
-              stopping={stoppingId === host.id}
-              copiedKey={copiedKey}
-              failedKey={failedKey}
-              onCopy={copy}
-              onConfirm={() => {
-                setStopConfirmingId(null)
-                setRenamingId(null)
-                setConfirmingId(current => current === host.id ? null : host.id)
-              }}
-              onPair={() => showCommand(host.id)}
-              onRemove={() => removeMachine(host)}
-              onSelect={selectCommand}
-              onRenameStart={() => {
-                setStopConfirmingId(null)
-                setConfirmingId(null)
-                startRename(host)
-              }}
-              onRenameChange={setRenameValue}
-              onRenameSave={() => saveRename(host)}
-              onRenameCancel={() => setRenamingId(null)}
-              onStopConfirm={() => {
-                setConfirmingId(null)
-                setRenamingId(null)
-                setStopConfirmingId(host.id)
-              }}
-              onStopKeep={() => setStopConfirmingId(null)}
-              onStop={() => stopCommand(host)}
-            />)}
-          </div>
-        </section> : null}
-
-        {serviceActive === true && hosts.length === 0 && !pairing ? <div className="cn-empty">
-          <div className="cn-empty-mark" aria-hidden="true"><span/></div>
-          <p className="cn-empty-t">Your machines will meet here</p>
-          <p className="cn-empty-b">Name one above, then run the one-line pairing command on it. No open ports or separate account needed.</p>
-        </div> : null}
-      </div>
+      {serviceActive === true && outboundActive === true ? <OutboundAccess
+        connections={outbound}
+        open={sharingOpen}
+        label={accessLabel}
+        command={accessCommand}
+        granting={grantingAccess}
+        confirmingId={outboundConfirmId}
+        revokingId={revokingOutboundId}
+        onOpen={() => setSharingOpen(true)}
+        onCancel={() => {
+          setSharingOpen(false)
+          setAccessLabel('')
+          setAccessCommand('')
+        }}
+        onLabel={setAccessLabel}
+        onCommand={setAccessCommand}
+        onGrant={grantOutboundAccess}
+        onConfirm={setOutboundConfirmId}
+        onKeep={() => setOutboundConfirmId(null)}
+        onRevoke={revokeOutboundAccess}
+      /> : null}
     </main>
   </div>
 }

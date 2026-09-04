@@ -11,7 +11,7 @@ export function statusOf(host) {
 export function commandCapabilities(host) {
   const state = host?.active_command?.state || 'dispatching'
   return {
-    canStop: Number(host?.runner_protocol) >= 2,
+    canStop: Boolean(host?.active_command?.id),
     stopping: state === 'canceling',
     state,
   }

@@ -36,9 +36,9 @@ The quoted `MACH` delimiter prevents the local shell from expanding the body.
 `mach` carries it literally to the selected remote shell, so do not add a local
 `/bin/bash -lc` wrapper or manually escape the whole program. `--script`
 defaults to `sh` on POSIX and PowerShell on Windows; use `--shell bash` only for
-Bash syntax. Updated runners receive the script through a literal data boundary;
-older paired runners use a compatibility wrapper until they are updated. `-C`
-is an exact absolute path on the remote machine.
+Bash syntax. Scripts cross the current runner through a literal data boundary;
+Connect rejects obsolete runners and shows their saved machines an in-place
+update command. `-C` is an exact absolute path on the remote machine.
 
 ## Operating rules
 

@@ -35,13 +35,11 @@ Reads AGENT_TOKEN and API_BASE_URL from the environment.
 """
 from __future__ import annotations
 
-import base64
 import json
 import ntpath
 import os
 import posixpath
 import secrets
-import shlex
 import sys
 import time
 import urllib.error
@@ -197,21 +195,6 @@ def _selected_script_shell(
     return shell or "sh"
 
 
-def _wrap_script(script: str, shell: str | None, platform_name: str | None) -> str:
-    """Compatibility wrapper for runners predating literal script transport."""
-    if "\x00" in script:
-        _fail("mach: a script cannot contain a NUL byte.")
-    executable = _selected_script_shell(shell, platform_name)
-    if _is_windows(platform_name):
-        encoded = base64.b64encode(script.encode("utf-16-le")).decode("ascii")
-        return (
-            f"{executable} -NoLogo -NoProfile -NonInteractive "
-            f"-EncodedCommand {encoded}"
-        )
-
-    return f"exec {shlex.quote(executable)} -c {shlex.quote(script)}"
-
-
 def _read_script() -> str:
     script = sys.stdin.read(_MAX_COMMAND_CHARS + 1)
     if not script.strip():
@@ -299,15 +282,9 @@ def main(argv) -> int:
 
     if script_mode:
         script = _read_script()
-        literal_script = int(host.get("runner_protocol") or 1) >= 4
-        command = (
-            None
-            if literal_script
-            else _wrap_script(script, shell, host.get("platform"))
-        )
+        command = None
     else:
         command = " ".join(cmd_parts)
-        literal_script = False
     if (
         command is not None
         and _is_windows(host.get("platform"))
@@ -325,9 +302,9 @@ def main(argv) -> int:
 
     request_id = secrets.token_hex(8)
     payload = {"timeout": timeout, "request_id": request_id}
-    if literal_script:
-        # Protocol 4 carries the exact script as data. It never becomes a local
-        # or remote command-line argument, avoiding both quoting and OS limits.
+    if script_mode:
+        # The current runner carries the exact script as data. It never becomes
+        # a local or remote command-line argument, avoiding quoting and OS limits.
         payload["script"] = script
         if shell is not None:
             payload["shell"] = _selected_script_shell(

@@ -1,7 +1,7 @@
 {
   "id": "connect",
   "name": "Connect",
-  "version": "0.3.7",
+  "version": "0.4.3",
   "description": "Pair your laptop, workstation, or cluster and let Möbius run things on it.",
   "author": "mobius-os",
   "license": "MIT",

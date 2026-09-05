@@ -56,6 +56,18 @@ state as soon as execution starts.
 Older paired runners continue to work in single-flight mode. Connect offers an
 in-place update command before it enables remote cancellation for them.
 
+## Shared access
+
+Another Möbius can create its normal one-line Connect command. Paste that
+command under **Can control this Möbius**, give the connection a recognizable
+name, and Connect pairs the two instances without exposing either owner's
+credentials in the app.
+
+The connection grants command access until it is revoked. Its status stays
+visible in Connect, and the owner can revoke or remove it from the same section
+at any time. Revocation tears down the supervised outbound runner and removes
+its saved pairing state.
+
 ## Agent command helper
 
 `mach` keeps a simple remote command short, passes a working directory as

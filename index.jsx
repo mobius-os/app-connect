@@ -6,6 +6,7 @@ import {
   disconnectPresentation,
   statusOf,
 } from './connect-state.mjs'
+import { loadConnectionList, responseError } from './connect-api.mjs'
 
 const DISCONNECT_COMMAND = 'python3 ~/.mobius-connect/runner.py --uninstall'
 const DEFAULT_MACHINE_NAME = 'My machine'
@@ -162,15 +163,6 @@ function relTime(timestamp) {
   if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`
   if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`
   return `${Math.floor(seconds / 86400)}d ago`
-}
-
-async function responseError(response, fallback) {
-  try {
-    const data = await response.json()
-    return typeof data?.detail === 'string' ? data.detail : fallback
-  } catch {
-    return fallback
-  }
 }
 
 function useCopyFeedback() {
@@ -514,6 +506,7 @@ export default function App({ appId, token }) {
   const [outbound, setOutbound] = useState([])
   const [serviceActive, setServiceActive] = useState(null)
   const [outboundActive, setOutboundActive] = useState(null)
+  const [loadNotices, setLoadNotices] = useState([])
   const [newName, setNewName] = useState(DEFAULT_MACHINE_NAME)
   const [addingMachine, setAddingMachine] = useState(false)
   const [pairing, setPairing] = useState(null)
@@ -543,46 +536,23 @@ export default function App({ appId, token }) {
 
   const load = useCallback(async () => {
     const sequence = ++loadSequence.current
-    try {
-      const [response, outboundResponse] = await Promise.all([
-        fetch('/api/connect/hosts', { headers: headers() }),
-        fetch('/api/connect/outbound', { headers: headers() }),
-      ])
-      if (sequence !== loadSequence.current) return
-      if ([404, 501, 503].includes(response.status)) {
-        setServiceActive(false)
-        setError(null)
-        return
-      }
-      if (!response.ok) {
-        throw new Error(await responseError(response, 'Couldn’t refresh your machines.'))
-      }
-      const data = await response.json()
-      const nextHosts = Array.isArray(data.hosts) ? data.hosts : []
-      let nextOutbound = []
-      if ([404, 501, 503].includes(outboundResponse.status)) {
-        setOutboundActive(false)
-        setOutbound([])
-      } else if (!outboundResponse.ok) {
-        throw new Error(await responseError(outboundResponse, 'Couldn’t refresh shared access.'))
-      } else {
-        const outboundData = await outboundResponse.json()
-        nextOutbound = Array.isArray(outboundData.connections) ? outboundData.connections : []
-        setOutboundActive(true)
-        setOutbound(nextOutbound)
-      }
-      setServiceActive(true)
-      setHosts(nextHosts)
-      setError(null)
-      if (!readySignalled.current) {
-        readySignalled.current = true
-        window.mobius.signal('app_ready', { item_count: nextHosts.length + nextOutbound.length })
-      }
-    } catch (cause) {
-      if (sequence !== loadSequence.current) return
-      const message = cause.message || 'Couldn’t refresh your machines.'
-      setError(message)
-      window.mobius.signal('error', { message, source: 'load' })
+    const [machines, shared] = await Promise.all([
+      loadConnectionList('/api/connect/hosts', 'hosts', 'Connect', headers()),
+      loadConnectionList('/api/connect/outbound', 'connections', 'Shared access', headers()),
+    ])
+    if (sequence !== loadSequence.current) return
+    setServiceActive(machines.ready)
+    setOutboundActive(shared.ready)
+    setHosts(machines.items)
+    setOutbound(shared.items)
+    const notices = [machines.notice, shared.notice].filter(Boolean)
+    setLoadNotices(notices)
+    for (const notice of notices) {
+      window.mobius.signal('error', { message: notice.title, source: 'load' })
+    }
+    if (!readySignalled.current) {
+      readySignalled.current = true
+      window.mobius.signal('app_ready', { item_count: machines.items.length + shared.items.length })
     }
   }, [headers])
 
@@ -806,14 +776,10 @@ export default function App({ appId, token }) {
     <main className="cn-shell">
       <div aria-live="polite">
         {error ? <div className="cn-message cn-error">{error}</div> : null}
-        {serviceActive === false ? <div className="cn-message cn-notice">
-          <strong>Restart needed</strong>
-          Connect will be available after Möbius restarts.
-        </div> : null}
-        {serviceActive === true && outboundActive === false ? <div className="cn-message cn-notice">
-          <strong>Restart needed</strong>
-          Shared access will be available after Möbius restarts.
-        </div> : null}
+        {loadNotices.map(notice => <div className="cn-message cn-notice" key={notice.title}>
+          <strong>{notice.title}</strong>
+          {notice.message}
+        </div>)}
       </div>
 
       {serviceActive === null ? <div className="cn-loading" role="status">Loading Connect…</div> : null}
@@ -897,7 +863,7 @@ export default function App({ appId, token }) {
         </div> : <div className="cn-empty-row">No machines added.</div>}
       </section> : null}
 
-      {serviceActive === true && outboundActive === true ? <OutboundAccess
+      {outboundActive === true ? <OutboundAccess
         connections={outbound}
         open={sharingOpen}
         label={accessLabel}

@@ -24,6 +24,7 @@
     "icon.png",
     "connect.md",
     "mach",
-    "connect-state.mjs"
+    "connect-state.mjs",
+    "connect-api.mjs"
   ]
 }

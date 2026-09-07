@@ -45,7 +45,7 @@ test('the two connection directions are the permanent page structure', () => {
 test('shared access stays progressive and revocable', () => {
   assert.match(source, /Paste their curl … \| sh command/)
   assert.match(source, /Full command access until you revoke it/)
-  assert.match(source, /fetch\('\/api\/connect\/outbound'/)
+  assert.match(source, /loadConnectionList\('\/api\/connect\/outbound'/)
   assert.match(source, /\/api\/connect\/outbound\/\$\{connection\.id\}/)
   assert.match(source, /Revoke access/)
 })

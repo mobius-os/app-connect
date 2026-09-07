@@ -86,3 +86,12 @@ The quoted heredoc delimiter keeps the script literal in the local shell.
 `mach` selects the requested interpreter on the paired machine and reports its
 real exit status. Script mode defaults to `sh` on POSIX and PowerShell on
 Windows.
+
+## Platform compatibility
+
+The app and Möbius platform update separately. Shared access requires the
+platform's `/api/connect/outbound` routes and supervised outbound runner.
+A missing route (404/501) is not proof that a restart is pending: check for a
+platform update, and restart only when that installed update requests it.
+A 503 means the service is unavailable and may need diagnosis. Each direction
+loads independently so an unavailable feature does not hide the other one.

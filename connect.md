@@ -16,6 +16,7 @@ mach=/data/apps/connect/mach
 "$mach" --list
 "$mach" -m "My machine" 'uname -a'
 "$mach" -m "My machine" -C /srv/app 'git status --short'
+"$mach" -m "My machine" -- '--command-that-looks-like-a-mach-option'
 ```
 
 Keep only genuinely simple commands inline. For loops, JSON, templates, nested
@@ -39,6 +40,12 @@ defaults to `sh` on POSIX and PowerShell on Windows; use `--shell bash` only for
 Bash syntax. Scripts cross the current runner through a literal data boundary;
 Connect rejects obsolete runners and shows their saved machines an in-place
 update command. `-C` is an exact absolute path on the remote machine.
+Use `--` to end `mach` option parsing when the remote command itself begins
+with a dash.
+
+Authenticated calls connect directly to the configured Möbius address. `mach`
+ignores proxy environment variables and refuses redirects rather than risking
+forwarding owner authorization to another destination.
 
 ## Operating rules
 

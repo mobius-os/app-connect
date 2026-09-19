@@ -8,6 +8,7 @@ shell, without the curl + JSON envelope.
 
 Usage:
   mach -m <machine> '<command>'                 run one command on <machine>
+  mach -m <machine> -- '<command>'              end mach options explicitly
   mach -m <machine> -C <absolute-dir> '<command>'
                                                 run it from a remote directory
   mach -m <machine> --script [--shell <name>]   read a literal script from stdin
@@ -32,6 +33,10 @@ Usage:
   self-contained: there is no remembered machine, directory, or environment.
 
 Reads AGENT_TOKEN and API_BASE_URL from the environment.
+
+Authenticated API calls connect directly to API_BASE_URL, ignore proxy
+environment variables, and refuse redirects so owner authorization never moves
+to a different destination.
 """
 from __future__ import annotations
 
@@ -52,6 +57,20 @@ _MAX_COMMAND_CHARS = 64 * 1024
 _MAX_WINDOWS_COMMAND_CHARS = 8_000
 _DEFAULT_HTTP_TIMEOUT = 30
 _MAX_HTTP_TIMEOUT = 3660
+_REDIRECT_CODES = frozenset((301, 302, 303, 307, 308))
+
+
+class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """Turn redirects into HTTP errors before urllib can forward auth."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+_API_OPENER = urllib.request.build_opener(
+    urllib.request.ProxyHandler({}),
+    _NoRedirectHandler(),
+)
 
 
 def _fail(msg: str, code: int = 1):
@@ -99,7 +118,7 @@ def _call(
                         retry_until - time.monotonic(),
                     ),
                 )
-            with urllib.request.urlopen(req, timeout=request_timeout) as resp:
+            with _API_OPENER.open(req, timeout=request_timeout) as resp:
                 try:
                     result = json.loads(resp.read().decode())
                 except (UnicodeError, ValueError):
@@ -108,7 +127,17 @@ def _call(
                     _fail("mach: Möbius returned an invalid response.", 2)
                 return result
         except urllib.error.HTTPError as exc:
-            detail = exc.read().decode(errors="replace")
+            if exc.code in _REDIRECT_CODES:
+                exc.close()
+                _fail(
+                    "mach: Möbius redirected an authenticated request; "
+                    "refusing to forward owner authorization.",
+                    2,
+                )
+            try:
+                detail = exc.read().decode(errors="replace")
+            finally:
+                exc.close()
             if exc.code in (502, 503):
                 next_delay = _wait_to_retry(retry_until, delay)
                 if next_delay is not None:
@@ -120,6 +149,8 @@ def _call(
                     detail = parsed["detail"]
             except ValueError:
                 pass
+            if not str(detail).strip():
+                detail = f"Möbius returned HTTP {exc.code} ({exc.reason})."
             _fail(f"mach: {detail}", 2)
         except (urllib.error.URLError, TimeoutError) as exc:
             next_delay = _wait_to_retry(retry_until, delay)
@@ -135,7 +166,31 @@ def _call(
 
 
 def _hosts():
-    return _call("/api/connect/hosts").get("hosts", [])
+    hosts = _call("/api/connect/hosts").get("hosts")
+    if not isinstance(hosts, list) or any(
+        not isinstance(host, dict)
+        or not isinstance(host.get("id"), str)
+        or not isinstance(host.get("name"), str)
+        for host in hosts
+    ):
+        _fail("mach: Möbius returned an invalid machine list.", 2)
+    return hosts
+
+
+def _command_result(result):
+    stdout = result.get("stdout", "")
+    stderr = result.get("stderr", "")
+    exit_code = result.get("exit_code", 0)
+    truncated = result.get("truncated", False)
+    if (
+        not isinstance(stdout, str)
+        or not isinstance(stderr, str)
+        or isinstance(exit_code, bool)
+        or not isinstance(exit_code, int)
+        or not isinstance(truncated, bool)
+    ):
+        _fail("mach: Möbius returned an invalid command result.", 2)
+    return stdout, stderr, exit_code, truncated
 
 
 def _format(hosts) -> str:
@@ -218,7 +273,10 @@ def main(argv) -> int:
     cmd_parts: list[str] = []
     it = iter(argv)
     for tok in it:
-        if tok in ("-m", "--machine"):
+        if tok == "--":
+            cmd_parts.extend(it)
+            break
+        elif tok in ("-m", "--machine"):
             machine = next(it, None)
             if not machine:
                 _fail("mach: -m / --machine needs a machine name.")
@@ -336,12 +394,10 @@ def main(argv) -> int:
                 "confirmed. Check Connect before sending another command.\n"
             )
         return 130
-    stdout = res.get("stdout", "")
-    stderr = res.get("stderr", "")
-    exit_code = int(res.get("exit_code", 0))
+    stdout, stderr, exit_code, truncated = _command_result(res)
     sys.stdout.write(stdout)
     sys.stderr.write(stderr)
-    if res.get("truncated"):
+    if truncated:
         sys.stderr.write("\nmach: output was truncated by Möbius.\n")
     if exit_code and not stdout and not stderr:
         sys.stderr.write(

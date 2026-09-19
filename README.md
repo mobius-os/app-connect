@@ -75,6 +75,7 @@ structured data, and accepts literal scripts without nested shell escaping:
 
 ```bash
 /data/apps/connect/mach -m Host -C /srv/app 'git status --short'
+/data/apps/connect/mach -m Host -- '--command-that-starts-with-a-dash'
 
 /data/apps/connect/mach -m Host -C /srv/app --script --shell bash <<'MACH'
 set -euo pipefail
@@ -85,7 +86,9 @@ MACH
 The quoted heredoc delimiter keeps the script literal in the local shell.
 `mach` selects the requested interpreter on the paired machine and reports its
 real exit status. Script mode defaults to `sh` on POSIX and PowerShell on
-Windows.
+Windows. Use `--` when a remote command begins with a dash. For authenticated
+calls to Möbius, `mach` ignores proxy environment variables and refuses
+redirects so owner authorization stays on the configured destination.
 
 ## Platform compatibility
 

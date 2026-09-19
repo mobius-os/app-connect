@@ -170,20 +170,31 @@ def _hosts():
     if not isinstance(hosts, list) or any(
         not isinstance(host, dict)
         or not isinstance(host.get("id"), str)
+        or not host.get("id")
         or not isinstance(host.get("name"), str)
+        or not host.get("name")
+        or not isinstance(host.get("online"), bool)
+        or not isinstance(host.get("paired"), bool)
+        or (
+            host.get("platform") is not None
+            and not isinstance(host.get("platform"), str)
+        )
         for host in hosts
     ):
         _fail("mach: Möbius returned an invalid machine list.", 2)
     return hosts
 
 
-def _command_result(result):
-    stdout = result.get("stdout", "")
-    stderr = result.get("stderr", "")
-    exit_code = result.get("exit_code", 0)
-    truncated = result.get("truncated", False)
+def _command_result(result, expected_request_id: str):
+    required = {"request_id", "stdout", "stderr", "exit_code", "truncated"}
+    stdout = result.get("stdout")
+    stderr = result.get("stderr")
+    exit_code = result.get("exit_code")
+    truncated = result.get("truncated")
     if (
-        not isinstance(stdout, str)
+        not required.issubset(result)
+        or result.get("request_id") != expected_request_id
+        or not isinstance(stdout, str)
         or not isinstance(stderr, str)
         or isinstance(exit_code, bool)
         or not isinstance(exit_code, int)
@@ -394,7 +405,7 @@ def main(argv) -> int:
                 "confirmed. Check Connect before sending another command.\n"
             )
         return 130
-    stdout, stderr, exit_code, truncated = _command_result(res)
+    stdout, stderr, exit_code, truncated = _command_result(res, request_id)
     sys.stdout.write(stdout)
     sys.stderr.write(stderr)
     if truncated:

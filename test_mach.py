@@ -33,6 +33,18 @@ def serve(handler):
         thread.join(timeout=2)
 
 
+def exec_result(payload, **overrides):
+    result = {
+        "request_id": payload["request_id"],
+        "stdout": "",
+        "stderr": "",
+        "exit_code": 0,
+        "truncated": False,
+    }
+    result.update(overrides)
+    return result
+
+
 class MachCancellationTest(unittest.TestCase):
     def test_ctrl_c_requests_cancel_for_the_exact_command(self):
         mach = load_mach()
@@ -118,9 +130,9 @@ class MachTargetingTest(unittest.TestCase):
     def test_remote_exit_and_truncation_are_reported(self):
         mach = load_mach()
         mach._hosts = lambda: [{"id": "h_test", "name": "Host", "online": True}]
-        mach._call = lambda *_args, **_kwargs: {
-            "stdout": "out", "stderr": "err", "exit_code": 7, "truncated": True,
-        }
+        mach._call = lambda _path, payload, *_args, **_kwargs: exec_result(
+            payload, stdout="out", stderr="err", exit_code=7, truncated=True,
+        )
         stdout = io.StringIO()
         stderr = io.StringIO()
         with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
@@ -135,7 +147,7 @@ class MachTargetingTest(unittest.TestCase):
         mach._hosts = lambda: [{"id": "h_test", "name": "Host", "online": True}]
         calls = []
         mach._call = lambda path, payload=None, method="GET", retry_until=None: (
-            calls.append(payload) or {"stdout": "", "exit_code": 0}
+            calls.append(payload) or exec_result(payload)
         )
 
         result = mach.main(["-m", "Host", "--", "--list"])
@@ -152,7 +164,7 @@ class MachTargetingTest(unittest.TestCase):
         calls = []
         mach._call = lambda path, payload=None, method="GET", retry_until=None: (
             calls.append((path, payload, method))
-            or {"stdout": "/srv/app\n", "exit_code": 0}
+            or exec_result(payload, stdout="/srv/app\n")
         )
 
         with contextlib.redirect_stdout(io.StringIO()):
@@ -185,7 +197,7 @@ class MachTargetingTest(unittest.TestCase):
         }]
         calls = []
         mach._call = lambda path, payload=None, method="GET", retry_until=None: (
-            calls.append(payload) or {"stdout": "", "exit_code": 0}
+            calls.append(payload) or exec_result(payload)
         )
 
         result = mach.main(["-m", "Desk", "-C", "C:\\work\\app", "cd"])
@@ -217,7 +229,7 @@ class MachTargetingTest(unittest.TestCase):
         calls = []
         mach._call = lambda path, payload=None, method="GET", retry_until=None: (
             calls.append((path, payload, method))
-            or {"stdout": "ok\n", "exit_code": 0}
+            or exec_result(payload, stdout="ok\n")
         )
         script = "set -eu\nname=kept\nprintf '%s\\n' '{{$name, $_ := .Networks}}'\n"
 
@@ -241,7 +253,7 @@ class MachTargetingTest(unittest.TestCase):
         calls = []
         mach._call = lambda path, payload=None, method="GET", retry_until=None: (
             calls.append((path, payload, method))
-            or {"stdout": "ok\n", "exit_code": 0}
+            or exec_result(payload, stdout="ok\n")
         )
         script = "set -eu\nname='$literal'\nprintf '%s\\n' \"$name\"\n"
 
@@ -284,7 +296,7 @@ class MachTargetingTest(unittest.TestCase):
         }]
         calls = []
         mach._call = lambda path, payload=None, method="GET", retry_until=None: (
-            calls.append(payload) or {"stdout": "", "exit_code": 0}
+            calls.append(payload) or exec_result(payload)
         )
         script = "Write-Output 'ready'\n" + ("#" * 12_000)
 
@@ -336,9 +348,9 @@ class MachTargetingTest(unittest.TestCase):
     def test_silent_remote_failure_has_a_diagnostic(self):
         mach = load_mach()
         mach._hosts = lambda: [{"id": "h_test", "name": "Host", "online": True}]
-        mach._call = lambda *_args, **_kwargs: {
-            "stdout": "", "stderr": "", "exit_code": 2,
-        }
+        mach._call = lambda _path, payload, *_args, **_kwargs: exec_result(
+            payload, exit_code=2,
+        )
         stderr = io.StringIO()
 
         with contextlib.redirect_stderr(stderr):
@@ -350,9 +362,9 @@ class MachTargetingTest(unittest.TestCase):
     def test_invalid_command_result_is_a_bounded_user_error(self):
         mach = load_mach()
         mach._hosts = lambda: [{"id": "h_test", "name": "Host", "online": True}]
-        mach._call = lambda *_args, **_kwargs: {
-            "stdout": ["not", "text"], "stderr": "", "exit_code": 0,
-        }
+        mach._call = lambda _path, payload, *_args, **_kwargs: exec_result(
+            payload, stdout=["not", "text"],
+        )
         stderr = io.StringIO()
 
         with contextlib.redirect_stderr(stderr), self.assertRaises(SystemExit) as raised:
@@ -360,6 +372,21 @@ class MachTargetingTest(unittest.TestCase):
 
         self.assertEqual(raised.exception.code, 2)
         self.assertIn("invalid command result", stderr.getvalue())
+
+    def test_command_result_requires_complete_matching_request_identity(self):
+        mach = load_mach()
+        for result in ({}, {
+            "request_id": "wrong",
+            "stdout": "",
+            "stderr": "",
+            "exit_code": 0,
+            "truncated": False,
+        }):
+            with self.subTest(result=result), \
+                    contextlib.redirect_stderr(io.StringIO()), \
+                    self.assertRaises(SystemExit) as raised:
+                mach._command_result(result, "expected")
+            self.assertEqual(raised.exception.code, 2)
 
 
 class MachHttpErrorTest(unittest.TestCase):
@@ -561,6 +588,21 @@ class MachResponseValidationTest(unittest.TestCase):
 
         self.assertEqual(raised.exception.code, 2)
         self.assertIn("invalid machine list", stderr.getvalue())
+
+    def test_machine_list_rejects_non_boolean_status_and_non_string_platform(self):
+        mach = load_mach()
+        valid = {
+            "id": "h_test", "name": "Host", "online": True,
+            "paired": True, "platform": "Linux 6.8",
+        }
+        for field, value in (("online", 1), ("paired", "yes"), ("platform", 42)):
+            host = {**valid, field: value}
+            mach._call = lambda *_args, host=host, **_kwargs: {"hosts": [host]}
+            with self.subTest(field=field), \
+                    contextlib.redirect_stderr(io.StringIO()), \
+                    self.assertRaises(SystemExit) as raised:
+                mach._hosts()
+            self.assertEqual(raised.exception.code, 2)
 
 
 if __name__ == "__main__":

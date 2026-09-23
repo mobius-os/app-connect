@@ -36,7 +36,7 @@ test('cancel targets the exact host and active command', () => {
 test('online disconnect makes the button primary and explains the local fallback', () => {
   assert.deepEqual(disconnectPresentation({ name: 'Host', paired: true, online: true }), {
     title: 'Disconnect Host?',
-    description: 'The button below asks Host to uninstall Connect, revokes its access, and removes it from this list.',
+    description: 'You’ll confirm before Connect is uninstalled and this saved connection is removed.',
     actionLabel: 'Disconnect machine',
     commandTitle: 'Otherwise, run it on Host',
     commandDescription: 'This command performs the same cleanup locally. Use it when Möbius can’t reach the machine.',

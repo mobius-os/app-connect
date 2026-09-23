@@ -48,8 +48,8 @@ export function disconnectPresentation(host) {
   }
 
   return {
-    title: `Disconnect ${name}?`,
-    description: `The button below asks ${name} to uninstall Connect, revokes its access, and removes it from this list.`,
+      title: `Disconnect ${name}?`,
+      description: 'You’ll confirm before Connect is uninstalled and this saved connection is removed.',
     actionLabel: 'Disconnect machine',
     commandTitle: `Otherwise, run it on ${name}`,
     commandDescription: 'This command performs the same cleanup locally. Use it when Möbius can’t reach the machine.',

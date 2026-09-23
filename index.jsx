@@ -34,7 +34,7 @@ const CSS = `
   .cn-section-heading { display: flex; align-items: center; min-width: 0; gap: 9px; }
   .cn-secttitle { margin: 0; color: var(--text); font-size: 15px; font-weight: 710; letter-spacing: -.01em; }
   .cn-count { min-width: 22px; height: 22px; display: inline-grid; place-items: center; padding: 0 7px; border-radius: 999px; color: var(--muted); background: var(--surface-2); font-size: 11px; font-weight: 680; font-variant-numeric: tabular-nums; }
-  .cn-list { overflow: hidden; border: 1px solid var(--border); border-radius: 15px; background: var(--surface); }
+  .cn-list { position: relative; overflow: visible; border: 1px solid var(--border); border-radius: 15px; background: var(--surface); }
   .cn-empty-row { min-height: 76px; display: flex; align-items: center; justify-content: center; border: 1px dashed color-mix(in srgb, var(--border) 85%, transparent); border-radius: 15px; color: var(--muted); font-size: 13px; }
 
   .cn-field { min-width: 0; }
@@ -67,16 +67,18 @@ const CSS = `
   .cn-notice strong { display: block; margin-bottom: 2px; }
   .cn-loading { padding: 50px 0; color: var(--muted); font-size: 13px; text-align: center; }
 
-  .cn-host, .cn-outbound { position: relative; min-height: 72px; display: flex; align-items: center; gap: 13px; padding: 13px 15px; border-bottom: 1px solid var(--border); }
+  .cn-host, .cn-outbound { position: relative; min-height: 72px; display: grid; grid-template-columns: 38px minmax(0, 1fr) auto; align-items: center; column-gap: 13px; row-gap: 8px; padding: 13px 15px; border-bottom: 1px solid var(--border); }
   .cn-host:last-child, .cn-outbound:last-child { border-bottom: 0; }
-  .cn-host.is-confirming, .cn-outbound.is-confirming { flex-wrap: wrap; }
+  .cn-host:first-child > .cn-host-toggle { border-top-left-radius: 14px; border-top-right-radius: 14px; }
+  .cn-host:last-child > .cn-host-toggle { border-bottom-left-radius: 14px; border-bottom-right-radius: 14px; }
   .cn-host-toggle { position: absolute; z-index: 0; inset: 0 0 auto; width: 100%; height: 71px; border: 0; border-radius: 14px; background: transparent; cursor: pointer; }
   .cn-host-toggle:hover:not(:disabled) { background: color-mix(in srgb, var(--surface-2) 48%, transparent); }
   .cn-host-toggle:disabled { cursor: default; }
-  .cn-host-symbol { position: relative; z-index: 1; pointer-events: none; flex: none; width: 38px; height: 38px; display: grid; place-items: center; border-radius: 11px; color: var(--muted); background: var(--surface-2); }
+  .cn-host-symbol { position: relative; z-index: 1; pointer-events: none; grid-column: 1; grid-row: 1; width: 38px; height: 38px; display: grid; place-items: center; border-radius: 11px; color: var(--muted); background: var(--surface-2); }
   .cn-host-symbol.on { color: #36b999; background: color-mix(in srgb, var(--cn-mint) 13%, var(--surface-2)); }
-  .cn-host-body, .cn-outbound-copy { position: relative; z-index: 1; flex: 1; min-width: 0; }
+  .cn-host-body, .cn-outbound-copy { position: relative; z-index: 1; grid-column: 2; grid-row: 1; min-width: 0; }
   .cn-host-body { pointer-events: none; }
+  .cn-host-body button, .cn-host-body input { pointer-events: auto; }
   .cn-host-top { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
   .cn-host-namebtn { pointer-events: auto; max-width: min(100%, 44ch); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin: -4px; padding: 4px; border: 0; border-radius: 6px; color: var(--text); background: transparent; font: 650 14px var(--font); text-align: left; cursor: text; }
   .cn-host-namebtn:hover { background: var(--surface-2); }
@@ -92,17 +94,28 @@ const CSS = `
   .cn-toggle-mark.is-open { transform: rotate(180deg); }
   .cn-toggle-mark svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 
-  .cn-disconnect, .cn-command, .cn-update { flex: 0 0 calc(100% - 51px); margin: 2px 0 2px 51px; padding: 13px 14px; border-radius: 12px; background: var(--surface-2); }
+  .cn-disconnect, .cn-command, .cn-update { grid-column: 2 / -1; min-width: 0; margin: 2px 0 0; padding: 13px 14px; border-radius: 12px; background: var(--surface-2); }
   .cn-disconnect-title, .cn-command-title, .cn-update-title { margin: 0 0 4px; font-size: 13px; font-weight: 680; }
   .cn-disconnect-copy, .cn-command-meta, .cn-update-copy { margin: 0 0 10px; color: var(--muted); font-size: 12px; line-height: 1.45; }
-  .cn-disconnect-actions, .cn-command-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
-  .cn-disconnect-alt, .cn-command-confirm { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); }
-  .cn-disconnect-alt-title { margin: 0 0 3px; font-size: 12px; font-weight: 680; }
-  .cn-disconnect-alt-copy, .cn-command-confirm p { margin: 0 0 9px; color: var(--muted); font-size: 11.5px; line-height: 1.45; }
+  .cn-disconnect-actions { display: flex; align-items: center; justify-content: flex-start; gap: 8px; }
+  .cn-disconnect-alt, .cn-update-manual { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); }
+  .cn-inline-confirm { width: 100%; display: flex; align-items: center; gap: 8px; }
+  .cn-inline-action { min-height: 40px; }
+  .cn-action-anchor { position: relative; z-index: 3; display: inline-flex; align-items: center; }
+  .cn-action-popover { position: absolute; z-index: 30; top: calc(100% + 8px); left: 0; width: min(320px, calc(100vw - 32px)); padding: 14px; border: 1px solid var(--border); border-radius: 12px; color: var(--text); background: var(--surface); box-shadow: 0 12px 28px rgb(0 0 0 / 28%); }
+  .cn-action-anchor.align-end .cn-action-popover { left: auto; right: 0; }
+  .cn-action-popover h3 { margin: 0 0 5px; font-size: 13px; font-weight: 700; }
+  .cn-action-popover p { margin: 0 0 12px; color: var(--muted); font-size: 12px; line-height: 1.45; }
+  .cn-action-popover-actions { display: flex; justify-content: flex-end; gap: 8px; }
+  .cn-update-result { margin: 10px 0 0; }
+  .cn-update-result.is-success { color: #36b999; }
+  .cn-update-result.is-waiting { color: #d7a848; }
+  .cn-update-result.is-error { color: #ffb7ba; }
+  .cn-disconnect-alt-title, .cn-update-manual-title { margin: 0 0 9px; font-size: 12px; font-weight: 680; }
+  .cn-disconnect-alt-copy { margin: 0 0 9px; color: var(--muted); font-size: 11.5px; line-height: 1.45; }
   .cn-command-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
   .cn-command-copy { min-width: 0; }
-  .cn-outbound-confirm { flex-basis: 100%; margin-left: 51px; color: var(--muted); font-size: 12px; }
-  .cn-outbound-actions { display: flex; justify-content: flex-end; gap: 8px; width: 100%; }
+  .cn-outbound > .cn-action-anchor { grid-column: 3; grid-row: 1; }
 
   .cn-pairing { margin: 0 0 14px; padding: 15px; border-radius: 14px; background: var(--surface); border: 1px solid color-mix(in srgb, var(--cn-violet) 34%, var(--border)); }
   .cn-card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
@@ -135,14 +148,20 @@ const CSS = `
     .cn-machine-form > .cn-btn { width: 100%; }
     .cn-form-footer { align-items: stretch; flex-direction: column; gap: 10px; }
     .cn-form-footer .cn-btn { width: 100%; }
-    .cn-host, .cn-outbound { padding-left: 12px; padding-right: 12px; }
-    .cn-disconnect, .cn-command, .cn-update { flex-basis: 100%; margin-left: 0; }
+    .cn-host, .cn-outbound { grid-template-columns: 38px minmax(0, 1fr); column-gap: 10px; padding-left: 12px; padding-right: 12px; }
+    .cn-host .cn-toggle-mark { position: absolute; top: 21px; right: 12px; }
+    .cn-host .cn-host-body { grid-column: 2; padding-right: 30px; }
+    .cn-disconnect, .cn-command, .cn-update { grid-column: 1 / -1; }
     .cn-command-row { align-items: stretch; flex-direction: column; }
-    .cn-command-row .cn-btn { width: 100%; }
-    .cn-disconnect-actions, .cn-command-actions { align-items: stretch; flex-direction: column-reverse; }
-    .cn-disconnect-actions .cn-btn, .cn-command-actions .cn-btn { width: 100%; }
-    .cn-outbound-confirm { margin-left: 0; }
-    .cn-outbound-actions .cn-btn { flex: 1; }
+    .cn-command-row .cn-action-anchor, .cn-command-row .cn-btn { width: 100%; }
+    .cn-disconnect-actions { align-items: stretch; flex-direction: column-reverse; }
+    .cn-disconnect-actions > .cn-action-anchor, .cn-disconnect-actions > .cn-btn,
+    .cn-disconnect-actions .cn-action-anchor > .cn-btn { width: 100%; }
+    .cn-action-popover-actions { align-items: stretch; flex-direction: column-reverse; }
+    .cn-action-popover-actions .cn-btn { width: 100%; }
+    .cn-outbound > .cn-action-anchor { grid-column: 2; grid-row: 2; justify-self: start; }
+    .cn-outbound .cn-action-anchor, .cn-outbound .cn-action-anchor > .cn-btn { width: 100%; }
+    .cn-action-popover { max-width: calc(100vw - 40px); }
     .cn-rename { flex-wrap: wrap; }
     .cn-rename .cn-input { flex-basis: 100%; }
     .cn-rename-actions { width: 100%; }
@@ -238,7 +257,67 @@ function PairingPanel({ pairing, copiedKey, failedKey, onCopy, onDone, onSelect 
   </section>
 }
 
-function DisconnectPanel({ host, busy, copiedKey, failedKey, onCopy, onPair, onRemove, onSelect }) {
+function ActionConfirm({
+  id, open, title, description, triggerLabel, confirmLabel, confirmingLabel,
+  onOpen, onCancel, onConfirm, disabled = false, confirming = false,
+  triggerClass = 'cn-btn cn-btn-ghost cn-btn-sm', tone = 'danger', align = 'start',
+}) {
+  return <div className={`cn-action-anchor${align === 'end' ? ' align-end' : ''}`}>
+    <button
+      className={triggerClass}
+      onClick={open ? onCancel : onOpen}
+      disabled={disabled || confirming}
+      aria-expanded={open}
+      aria-controls={open ? id : undefined}
+    >{triggerLabel}</button>
+    {open ? <section
+      className="cn-action-popover"
+      id={id}
+      role="group"
+      aria-labelledby={`${id}-title`}
+      aria-describedby={description ? `${id}-description` : undefined}
+      onKeyDown={event => { if (event.key === 'Escape') onCancel() }}
+    >
+      <h3 id={`${id}-title`}>{title}</h3>
+      {description ? <p id={`${id}-description`}>{description}</p> : null}
+      <div className="cn-action-popover-actions">
+        <button className="cn-btn cn-btn-ghost cn-btn-sm" onClick={onCancel} disabled={confirming} autoFocus>
+          {confirming ? 'Working…' : 'Not now'}
+        </button>
+        <button
+          className={`cn-btn cn-btn-sm${tone === 'danger' ? ' cn-btn-danger' : ''}`}
+          onClick={onConfirm}
+          disabled={disabled || confirming}
+        >{confirming ? confirmingLabel : confirmLabel}</button>
+      </div>
+    </section> : null}
+  </div>
+}
+
+function InlineActionConfirm({
+  open, triggerLabel, confirmLabel, confirmingLabel, onOpen, onCancel,
+  onConfirm, disabled = false, confirming = false,
+  triggerClass = 'cn-btn cn-btn-sm', tone = 'danger',
+}) {
+  return <div className="cn-inline-confirm">
+    <button
+      className={`${triggerClass} cn-inline-action${tone === 'danger' ? ' cn-btn-danger' : ''}`}
+      onClick={open ? onConfirm : onOpen}
+      disabled={disabled || confirming}
+      aria-expanded={open}
+    >{confirming ? confirmingLabel : open ? confirmLabel : triggerLabel}</button>
+    {open ? <button
+      className="cn-btn cn-btn-ghost cn-btn-sm cn-inline-not-now"
+      onClick={onCancel}
+      disabled={confirming}
+    >Not now</button> : null}
+  </div>
+}
+
+function DisconnectPanel({
+  host, busy, confirmingRemove, copiedKey, failedKey, onCopy, onPair,
+  onRemoveOpen, onRemoveCancel, onRemove, onSelect,
+}) {
   const command = host.disconnect_command || DISCONNECT_COMMAND
   const copyKey = `disconnect:${host.id}`
   const presentation = disconnectPresentation(host)
@@ -247,19 +326,31 @@ function DisconnectPanel({ host, busy, copiedKey, failedKey, onCopy, onPair, onR
     : presentation.actionLabel
 
   return <div className="cn-disconnect">
-    <p className="cn-disconnect-title">{presentation.title}</p>
-    <p className="cn-disconnect-copy">{presentation.description}</p>
+    {!host.online ? <>
+      <p className="cn-disconnect-title">{presentation.title}</p>
+      <p className="cn-disconnect-copy">{presentation.description}</p>
+    </> : null}
     <div className="cn-disconnect-actions">
       {!host.paired ? <button className="cn-btn cn-btn-ghost cn-btn-sm" onClick={onPair} disabled={busy}>
         Pair machine
       </button> : null}
-      <button className="cn-btn cn-btn-danger cn-btn-sm" onClick={onRemove} disabled={busy}>
-        {action}
-      </button>
+      <InlineActionConfirm
+        open={confirmingRemove}
+        triggerLabel={action}
+        triggerClass="cn-btn cn-btn-sm"
+        confirmLabel={host.online ? 'Confirm disconnect' : (host.paired ? 'Confirm remove' : 'Confirm remove')}
+        confirmingLabel={host.online ? 'Disconnecting…' : 'Removing…'}
+        onOpen={onRemoveOpen}
+        onCancel={onRemoveCancel}
+        onConfirm={onRemove}
+        disabled={busy}
+        confirming={busy}
+        tone="danger"
+      />
     </div>
     {host.paired ? <div className="cn-disconnect-alt">
-      <p className="cn-disconnect-alt-title">{presentation.commandTitle}</p>
-      <p className="cn-disconnect-alt-copy">{presentation.commandDescription}</p>
+      <p className="cn-disconnect-alt-title">{host.online ? 'Disconnect manually' : presentation.commandTitle}</p>
+      {!host.online ? <p className="cn-disconnect-alt-copy">{presentation.commandDescription}</p> : null}
       <CopyCommand
         command={command}
         copyKey={copyKey}
@@ -336,20 +427,21 @@ function OutboundAccess({
             </div>
             <span className="cn-outbound-meta">{connection.target}</span>
           </div>
-          {!confirming ? <button
-            className="cn-btn cn-btn-ghost cn-btn-sm"
-            onClick={() => onConfirm(connection.id)}
+          <ActionConfirm
+            id={`cn-revoke-${connection.id}`}
+            open={confirming}
+            title={`Revoke access for ${connection.label}?`}
+            description="This machine will no longer be able to run commands through this Möbius."
+            triggerLabel={connection.online ? 'Revoke' : 'Remove'}
+            confirmLabel={connection.online ? 'Revoke access' : 'Remove access'}
+            confirmingLabel={connection.online ? 'Revoking…' : 'Removing…'}
+            onOpen={() => onConfirm(connection.id)}
+            onCancel={onKeep}
+            onConfirm={() => onRevoke(connection)}
             disabled={revokingId === connection.id}
-          >{connection.online ? 'Revoke' : 'Remove'}</button> : null}
-          {confirming ? <>
-            <div className="cn-outbound-confirm">Revoke access for {connection.label}?</div>
-            <div className="cn-outbound-actions">
-              <button className="cn-btn cn-btn-ghost cn-btn-sm" onClick={onKeep} disabled={revokingId === connection.id}>Keep</button>
-              <button className="cn-btn cn-btn-danger cn-btn-sm" onClick={() => onRevoke(connection)} disabled={revokingId === connection.id}>
-                {revokingId === connection.id ? 'Revoking…' : 'Revoke access'}
-              </button>
-            </div>
-          </> : null}
+            confirming={revokingId === connection.id}
+            align="end"
+          />
         </article>
       })}
     </div> : <div className="cn-empty-row">No machines have access.</div>}
@@ -369,53 +461,102 @@ function CommandPanel({ host, confirming, stopping, onConfirm, onKeep, onStop })
       <div className="cn-command-copy">
         <p className="cn-command-title">{stoppingNow ? 'Stopping command…' : 'Command in progress'}</p>
         <p className="cn-command-meta">
-          {canStop ? `${started}${limit}` : 'Connect is waiting for the command details before it can offer a stop action.'}
+          {host.busy_source === 'shared_runner'
+            ? 'A command is running through another Möbius instance. Wait for it to finish before starting new work.'
+            : canStop ? `${started}${limit}` : 'Connect is waiting for the command details before it can offer a stop action.'}
         </p>
       </div>
-      {canStop && !confirming ? <button
-        className="cn-btn cn-btn-danger cn-btn-sm"
-        onClick={onConfirm}
+      {canStop ? <ActionConfirm
+        id={`cn-stop-${host.id}`}
+        open={confirming}
+        title="Stop this command?"
+        description={`This also stops every process it started on ${host.name}.`}
+        triggerLabel={stoppingNow ? 'Stopping…' : 'Stop command'}
+        confirmLabel="Stop now"
+        confirmingLabel="Stopping…"
+        onOpen={onConfirm}
+        onCancel={onKeep}
+        onConfirm={onStop}
         disabled={stoppingNow}
-      >{stoppingNow ? 'Stopping…' : 'Stop command'}</button> : null}
+        confirming={stoppingNow}
+        triggerClass="cn-btn cn-btn-danger cn-btn-sm"
+        align="end"
+      /> : null}
     </div>
-    {canStop && confirming ? <div className="cn-command-confirm">
-      <p>Stop this command and every process it started on {host.name}?</p>
-      <div className="cn-command-actions">
-        <button className="cn-btn cn-btn-ghost cn-btn-sm" onClick={onKeep} disabled={stopping}>
-          Keep running
-        </button>
-        <button className="cn-btn cn-btn-danger cn-btn-sm" onClick={onStop} disabled={stopping}>
-          {stopping ? 'Stopping…' : 'Stop now'}
-        </button>
-      </div>
-    </div> : null}
   </div>
 }
 
-function UpdatePanel({ host, copiedKey, failedKey, onCopy, onSelect }) {
-  if (!host.update_command) return null
+function UpdatePanel({
+  host, copiedKey, failedKey, onCopy, onSelect,
+  confirming, updating, result, onUpdate, onConfirm, onCancel,
+}) {
+  if (!host.update_command && !result) return null
   const copyKey = `update:${host.id}`
+  const currentResult = result?.hostId === host.id ? result : null
+  const updated = !host.runner_update_available
+  const resultOutput = `${currentResult?.stdout || ''}\n${currentResult?.stderr || ''}`
+  const runnerRestarted = currentResult?.exitCode === 125
+    && /runner restarted before the command result was reported/i.test(resultOutput)
+  const fallback = currentResult && /NOT a reboot|background/i.test(
+    resultOutput,
+  )
+  const failure = currentResult?.errorKind === 'expired'
+    ? 'The machine didn’t start the update before it expired. Nothing ran; try again.'
+    : currentResult?.exitCode === 125 && !runnerRestarted
+    ? 'Another command is using this machine, so the update is waiting. This can be work from another Möbius instance. When it finishes, try again; nothing was changed.'
+    : currentResult?.errorKind === 'request'
+      ? currentResult.errorMessage
+      : `Update command failed (exit ${currentResult?.exitCode}). Review the command result and try again.`
   return <div className="cn-update">
-    <p className="cn-update-title">Update the Connect runner</p>
-    <p className="cn-update-copy">
-      Run this on {host.name}. It keeps the existing pairing and installs the current reconnecting HTTPS runner.
-    </p>
-    <CopyCommand
-      command={host.update_command}
-      copyKey={copyKey}
-      copiedKey={copiedKey}
-      failedKey={failedKey}
-      onCopy={onCopy}
-      onSelect={onSelect}
-    />
+    {!updated && !host.busy && !updating ? <InlineActionConfirm
+      open={confirming}
+      triggerLabel={currentResult?.exitCode === 125 ? 'Try update again' : 'Update runner'}
+      confirmLabel="Confirm update"
+      confirmingLabel="Updating…"
+      onOpen={onUpdate}
+      onCancel={onCancel}
+      onConfirm={onConfirm}
+      disabled={updating}
+      confirming={updating}
+      triggerClass="cn-btn cn-btn-sm"
+      tone="primary"
+    /> : null}
+    {host.update_command ? <div className="cn-update-manual">
+      <p className="cn-update-manual-title">Update manually</p>
+      <CopyCommand
+        command={host.update_command}
+        copyKey={copyKey}
+        copiedKey={copiedKey}
+        failedKey={failedKey}
+        onCopy={onCopy}
+        onSelect={onSelect}
+      />
+    </div> : null}
+    {updating ? <p className="cn-update-result" role="status">Updating on {host.name}…</p> : null}
+    {currentResult && !updating ? <p
+      className={`cn-update-result${(currentResult.exitCode === 0 || runnerRestarted) && updated ? ' is-success' : currentResult.exitCode === 125 || currentResult.errorKind === 'expired' ? ' is-waiting' : ' is-error'}`}
+      role="status"
+    >{currentResult.errorKind || (currentResult.exitCode !== 0 && !runnerRestarted)
+      ? failure
+      : runnerRestarted && updated
+        ? 'Runner updated and reconnected.'
+        : runnerRestarted
+          ? 'The runner restarted, but Connect still reports an update is available. Check that it is online before trying again.'
+      : fallback
+        ? 'The runner reconnected, but the installer used a temporary background process. It may not restart after a reboot.'
+        : updated
+          ? 'Runner updated and reconnected.'
+          : 'Installer finished; Connect has not confirmed the updated runner yet.'}</p> : null}
   </div>
 }
 
 function MachineRow({
-  host, confirming, deleting, renaming, renameValue, saving,
+  host, confirming, deleting, removeConfirming, renaming, renameValue, saving,
   copiedKey, failedKey, onCopy, onConfirm, onPair, onRemove, onSelect,
   onRenameStart, onRenameChange, onRenameSave, onRenameCancel,
   stopConfirming, stopping, onStopConfirm, onStopKeep, onStop,
+  onRemoveConfirm, onRemoveCancel,
+  updateConfirming, updating, updateResult, onUpdate, onUpdateConfirm, onUpdateCancel,
 }) {
   const status = statusOf(host)
   const meta = [
@@ -423,9 +564,7 @@ function MachineRow({
     !host.online && host.paired && host.last_seen ? `Last seen ${relTime(host.last_seen)}` : null,
   ].filter(Boolean).join(' · ')
   const expanded = confirming || renaming
-  const wrapped = expanded || host.busy || host.runner_update_available
-
-  return <article className={`cn-host${wrapped ? ' is-confirming' : ''}`}>
+  return <article className="cn-host">
     <button
       className="cn-host-toggle"
       onClick={onConfirm}
@@ -476,10 +615,13 @@ function MachineRow({
     {confirming ? <DisconnectPanel
       host={host}
       busy={deleting}
+      confirmingRemove={removeConfirming}
       copiedKey={copiedKey}
       failedKey={failedKey}
       onCopy={onCopy}
       onPair={onPair}
+      onRemoveOpen={onRemoveConfirm}
+      onRemoveCancel={onRemoveCancel}
       onRemove={onRemove}
       onSelect={onSelect}
     /> : null}
@@ -497,6 +639,22 @@ function MachineRow({
       failedKey={failedKey}
       onCopy={onCopy}
       onSelect={onSelect}
+      confirming={updateConfirming}
+      updating={updating}
+      result={updateResult}
+      onUpdate={onUpdate}
+      onConfirm={onUpdateConfirm}
+      onCancel={onUpdateCancel}
+    /> : null}
+    {updateResult?.hostId === host.id && !host.runner_update_available && !host.busy ? <UpdatePanel
+      host={host}
+      copiedKey={copiedKey}
+      failedKey={failedKey}
+      onCopy={onCopy}
+      onSelect={onSelect}
+      confirming={false}
+      updating={updating}
+      result={updateResult}
     /> : null}
   </article>
 }
@@ -511,6 +669,7 @@ export default function App({ appId, token }) {
   const [addingMachine, setAddingMachine] = useState(false)
   const [pairing, setPairing] = useState(null)
   const [confirmingId, setConfirmingId] = useState(null)
+  const [removeConfirmingId, setRemoveConfirmingId] = useState(null)
   const [renamingId, setRenamingId] = useState(null)
   const [renameValue, setRenameValue] = useState('')
   const [savingId, setSavingId] = useState(null)
@@ -518,6 +677,9 @@ export default function App({ appId, token }) {
   const [deletingId, setDeletingId] = useState(null)
   const [stopConfirmingId, setStopConfirmingId] = useState(null)
   const [stoppingId, setStoppingId] = useState(null)
+  const [updateConfirmingId, setUpdateConfirmingId] = useState(null)
+  const [updatingId, setUpdatingId] = useState(null)
+  const [updateResult, setUpdateResult] = useState(null)
   const [accessLabel, setAccessLabel] = useState('')
   const [accessCommand, setAccessCommand] = useState('')
   const [sharingOpen, setSharingOpen] = useState(false)
@@ -641,6 +803,7 @@ export default function App({ appId, token }) {
       if (pairing?.id === host.id) setPairing(null)
       setHosts(current => current.filter(item => item.id !== host.id))
       setConfirmingId(null)
+      setRemoveConfirmingId(null)
       window.mobius.signal('item_deleted')
       await load()
     } catch (cause) {
@@ -703,6 +866,44 @@ export default function App({ appId, token }) {
       setStoppingId(null)
     }
   }, [headers, load, stoppingId])
+
+  const runRunnerUpdate = useCallback(async (host) => {
+    if (!host.update_command || host.busy || updatingId) return
+    setUpdatingId(host.id)
+    setUpdateConfirmingId(null)
+    setUpdateResult(null)
+    setError(null)
+    try {
+      const response = await fetch(`/api/connect/hosts/${host.id}/exec`, {
+        method: 'POST',
+        headers: headers({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({ cmd: host.update_command, timeout: 180 }),
+      })
+      if (!response.ok) {
+        const detail = await responseError(response, `Update request didn’t complete (HTTP ${response.status}).`)
+        if (response.status === 504 && /did not start the command before it expired/i.test(detail)) {
+          setUpdateResult({ hostId: host.id, errorKind: 'expired', errorMessage: detail })
+        } else if (response.status === 409 && /busy|running a command/i.test(detail)) {
+          setUpdateResult({ hostId: host.id, exitCode: 125, errorMessage: detail })
+        } else {
+          setUpdateResult({ hostId: host.id, errorKind: 'request', errorMessage: detail })
+        }
+        return
+      }
+      const result = await response.json()
+      setUpdateResult({
+        hostId: host.id,
+        exitCode: result.exit_code,
+        stdout: result.stdout || '',
+        stderr: result.stderr || '',
+      })
+      await load()
+    } catch (cause) {
+      setUpdateResult({ hostId: host.id, errorKind: 'request', errorMessage: cause.message || 'Couldn’t update this runner.' })
+    } finally {
+      setUpdatingId(null)
+    }
+  }, [headers, load, updatingId])
 
   const grantOutboundAccess = useCallback(async () => {
     const label = accessLabel.trim()
@@ -828,6 +1029,7 @@ export default function App({ appId, token }) {
             host={host}
             confirming={confirmingId === host.id}
             deleting={deletingId === host.id}
+            removeConfirming={removeConfirmingId === host.id}
             renaming={renamingId === host.id}
             renameValue={renameValue}
             saving={savingId === host.id}
@@ -837,15 +1039,26 @@ export default function App({ appId, token }) {
             failedKey={failedKey}
             onCopy={copy}
             onConfirm={() => {
+              setRemoveConfirmingId(null)
+              setOutboundConfirmId(null)
+              setUpdateConfirmingId(null)
               setStopConfirmingId(null)
               setRenamingId(null)
               setConfirmingId(current => current === host.id ? null : host.id)
             }}
             onPair={() => showCommand(host.id)}
             onRemove={() => removeMachine(host)}
+            onRemoveConfirm={() => {
+              setStopConfirmingId(null)
+              setOutboundConfirmId(null)
+              setUpdateConfirmingId(null)
+              setRemoveConfirmingId(host.id)
+            }}
+            onRemoveCancel={() => setRemoveConfirmingId(null)}
             onSelect={selectCommand}
             onRenameStart={() => {
               setStopConfirmingId(null)
+              setRemoveConfirmingId(null)
               setConfirmingId(null)
               startRename(host)
             }}
@@ -853,12 +1066,28 @@ export default function App({ appId, token }) {
             onRenameSave={() => saveRename(host)}
             onRenameCancel={() => setRenamingId(null)}
             onStopConfirm={() => {
+              setRemoveConfirmingId(null)
+              setOutboundConfirmId(null)
+              setUpdateConfirmingId(null)
               setConfirmingId(null)
               setRenamingId(null)
               setStopConfirmingId(host.id)
             }}
             onStopKeep={() => setStopConfirmingId(null)}
             onStop={() => stopCommand(host)}
+            updateConfirming={updateConfirmingId === host.id}
+            updating={updatingId === host.id}
+            updateResult={updateResult}
+            onUpdate={() => {
+              setRemoveConfirmingId(null)
+              setOutboundConfirmId(null)
+              setConfirmingId(null)
+              setRenamingId(null)
+              setStopConfirmingId(null)
+              setUpdateConfirmingId(host.id)
+            }}
+            onUpdateConfirm={() => runRunnerUpdate(host)}
+            onUpdateCancel={() => setUpdateConfirmingId(null)}
           />)}
         </div> : <div className="cn-empty-row">No machines added.</div>}
       </section> : null}
@@ -880,7 +1109,12 @@ export default function App({ appId, token }) {
         onLabel={setAccessLabel}
         onCommand={setAccessCommand}
         onGrant={grantOutboundAccess}
-        onConfirm={setOutboundConfirmId}
+        onConfirm={id => {
+          setRemoveConfirmingId(null)
+          setStopConfirmingId(null)
+          setUpdateConfirmingId(null)
+          setOutboundConfirmId(id)
+        }}
         onKeep={() => setOutboundConfirmId(null)}
         onRevoke={revokeOutboundAccess}
       /> : null}

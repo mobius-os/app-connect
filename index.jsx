@@ -1,9 +1,12 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { Check, Copy, Desktop, Plus } from '@openai/apps-sdk-ui/components/Icon'
 import {
+  activeCommands,
+  appendTail,
   cancelCommandPath,
   commandCapabilities,
   disconnectPresentation,
+  outputPath,
   statusOf,
 } from './connect-state.mjs'
 import { loadConnectionList, responseError } from './connect-api.mjs'
@@ -116,6 +119,9 @@ const CSS = `
   .cn-command-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
   .cn-command-copy { min-width: 0; }
   .cn-outbound > .cn-action-anchor { grid-column: 3; grid-row: 1; }
+  .cn-command + .cn-command { margin-top: -7px; }
+  .cn-command-label { display: block; margin: 0 0 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); font: 600 12px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .cn-tail { max-height: 196px; overflow: auto; margin: 11px 0 0; padding: 9px 11px; border: 1px solid var(--border); border-radius: 9px; color: color-mix(in srgb, var(--text) 86%, var(--muted)); background: var(--bg); font: 11px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
 
   .cn-pairing { margin: 0 0 14px; padding: 15px; border-radius: 14px; background: var(--surface); border: 1px solid color-mix(in srgb, var(--cn-violet) 34%, var(--border)); }
   .cn-card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
@@ -448,26 +454,24 @@ function OutboundAccess({
   </section>
 }
 
-function CommandPanel({ host, confirming, stopping, onConfirm, onKeep, onStop }) {
-  const command = host.active_command || {}
-  const capabilities = commandCapabilities(host)
+function CommandPanel({ host, command, tail, confirming, stopping, onConfirm, onKeep, onStop }) {
+  const capabilities = commandCapabilities(command)
   const stoppingNow = capabilities.stopping || stopping
   const canStop = capabilities.canStop
   const started = command.started_at ? `Started ${relTime(command.started_at)}` : 'Starting on the machine'
-  const limit = command.timeout ? ` · ${command.timeout}s limit` : ''
+  const limit = command.timeout ? ` · ${formatLimit(command.timeout)} limit` : ''
 
   return <div className="cn-command">
     <div className="cn-command-row">
       <div className="cn-command-copy">
         <p className="cn-command-title">{stoppingNow ? 'Stopping command…' : 'Command in progress'}</p>
+        {command.label ? <code className="cn-command-label" title={command.label}>{command.label}</code> : null}
         <p className="cn-command-meta">
-          {host.busy_source === 'shared_runner'
-            ? 'A command is running through another Möbius instance. Wait for it to finish before starting new work.'
-            : canStop ? `${started}${limit}` : 'Connect is waiting for the command details before it can offer a stop action.'}
+          {canStop ? `${started}${limit}` : 'Connect is waiting for the command details before it can offer a stop action.'}
         </p>
       </div>
       {canStop ? <ActionConfirm
-        id={`cn-stop-${host.id}`}
+        id={`cn-stop-${host.id}-${command.id}`}
         open={confirming}
         title="Stop this command?"
         description={`This also stops every process it started on ${host.name}.`}
@@ -483,13 +487,27 @@ function CommandPanel({ host, confirming, stopping, onConfirm, onKeep, onStop })
         align="end"
       /> : null}
     </div>
+    {tail ? <pre className="cn-tail" aria-label="Latest output">{tail}</pre> : null}
   </div>
+}
+
+function formatLimit(seconds) {
+  if (seconds % 3600 === 0) return `${seconds / 3600}h`
+  if (seconds >= 600 && seconds % 60 === 0) return `${seconds / 60}m`
+  return `${seconds}s`
 }
 
 function UpdatePanel({
   host, copiedKey, failedKey, onCopy, onSelect,
   confirming, updating, result, onUpdate, onConfirm, onCancel,
 }) {
+  if (host.runner_managed === 'mobius') {
+    return <div className="cn-update">
+      <p className="cn-update-result" role="status">
+        {host.name} is another Möbius. It installs the current runner the next time it restarts.
+      </p>
+    </div>
+  }
   if (!host.update_command && !result) return null
   const copyKey = `update:${host.id}`
   const currentResult = result?.hostId === host.id ? result : null
@@ -554,11 +572,12 @@ function MachineRow({
   host, confirming, deleting, removeConfirming, renaming, renameValue, saving,
   copiedKey, failedKey, onCopy, onConfirm, onPair, onRemove, onSelect,
   onRenameStart, onRenameChange, onRenameSave, onRenameCancel,
-  stopConfirming, stopping, onStopConfirm, onStopKeep, onStop,
+  tails, stopConfirmingId, stoppingId, onStopConfirm, onStopKeep, onStop,
   onRemoveConfirm, onRemoveCancel,
   updateConfirming, updating, updateResult, onUpdate, onUpdateConfirm, onUpdateCancel,
 }) {
   const status = statusOf(host)
+  const commands = activeCommands(host)
   const meta = [
     host.platform,
     !host.online && host.paired && host.last_seen ? `Last seen ${relTime(host.last_seen)}` : null,
@@ -625,14 +644,17 @@ function MachineRow({
       onRemove={onRemove}
       onSelect={onSelect}
     /> : null}
-    {host.busy ? <CommandPanel
+    {commands.map(command => <CommandPanel
+      key={command.id}
       host={host}
-      confirming={stopConfirming}
-      stopping={stopping}
-      onConfirm={onStopConfirm}
+      command={command}
+      tail={tails[command.id]?.tail}
+      confirming={stopConfirmingId === command.id}
+      stopping={stoppingId === command.id}
+      onConfirm={() => onStopConfirm(command)}
       onKeep={onStopKeep}
-      onStop={onStop}
-    /> : null}
+      onStop={() => onStop(command)}
+    />)}
     {host.runner_update_available && !host.busy && !expanded ? <UpdatePanel
       host={host}
       copiedKey={copiedKey}
@@ -680,6 +702,9 @@ export default function App({ appId, token }) {
   const [updateConfirmingId, setUpdateConfirmingId] = useState(null)
   const [updatingId, setUpdatingId] = useState(null)
   const [updateResult, setUpdateResult] = useState(null)
+  // Latest output lines per running command: { [commandId]: { tail } }.
+  const [tails, setTails] = useState({})
+  const outputCursors = useRef({})
   const [accessLabel, setAccessLabel] = useState('')
   const [accessCommand, setAccessCommand] = useState('')
   const [sharingOpen, setSharingOpen] = useState(false)
@@ -719,6 +744,9 @@ export default function App({ appId, token }) {
   }, [headers])
 
   const hasBusyHost = hosts.some(host => host.busy)
+  const runningKey = hosts
+    .flatMap(host => activeCommands(host).map(command => `${host.id}/${command.id}`))
+    .join(',')
 
   useEffect(() => {
     load()
@@ -737,9 +765,65 @@ export default function App({ appId, token }) {
 
   useEffect(() => {
     if (stopConfirmingId && !hosts.some(host => (
-      host.id === stopConfirmingId && host.busy
+      activeCommands(host).some(command => command.id === stopConfirmingId)
     ))) setStopConfirmingId(null)
   }, [hosts, stopConfirmingId])
+
+  // Follow each running command's output while it runs. Only a Möbius that
+  // reports a command list has the output route; older ones show no tail.
+  useEffect(() => {
+    const running = hosts
+      .filter(host => Array.isArray(host.active_commands))
+      .flatMap(host => host.active_commands.map(command => ({ host, command })))
+    const live = new Set(running.map(({ command }) => command.id))
+    setTails(current => Object.fromEntries(
+      Object.entries(current).filter(([id]) => live.has(id)),
+    ))
+    const cursors = outputCursors.current
+    for (const id of Object.keys(cursors)) if (!live.has(id)) delete cursors[id]
+    if (!running.length) return undefined
+    let stopped = false
+    let inFlight = false
+    const poll = async () => {
+      // A slow round must finish before the next starts, or two polls would
+      // read the same cursor and append the same lines twice.
+      if (inFlight) return
+      inFlight = true
+      try {
+        await pollOnce()
+      } finally {
+        inFlight = false
+      }
+    }
+    const pollOnce = async () => {
+      for (const { host, command } of running) {
+        const path = outputPath(host, command, cursors[command.id] ?? 0)
+        try {
+          const response = await fetch(path, { headers: headers() })
+          if (!response.ok || stopped) continue
+          const view = await response.json()
+          if (stopped || !Array.isArray(view?.chunks)) continue
+          cursors[command.id] = view.next
+          if (view.chunks.length) {
+            setTails(current => ({
+              ...current,
+              [command.id]: { tail: appendTail(current[command.id]?.tail, view.chunks) },
+            }))
+          }
+        } catch {
+          // The next poll retries; a missing tail never blocks the controls.
+        }
+      }
+    }
+    poll()
+    const timer = setInterval(poll, 1500)
+    return () => {
+      stopped = true
+      clearInterval(timer)
+    }
+    // runningKey captures exactly which commands are live.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [runningKey, headers])
 
   useEffect(() => {
     if (confirmingId && hosts.some(host => (
@@ -848,10 +932,10 @@ export default function App({ appId, token }) {
     }
   }, [renameValue, savingId, headers])
 
-  const stopCommand = useCallback(async (host) => {
-    const path = cancelCommandPath(host)
+  const stopCommand = useCallback(async (host, command) => {
+    const path = cancelCommandPath(host, command)
     if (!path || stoppingId) return
-    setStoppingId(host.id)
+    setStoppingId(command.id)
     setError(null)
     try {
       const response = await fetch(path, { method: 'POST', headers: headers() })
@@ -1033,8 +1117,9 @@ export default function App({ appId, token }) {
             renaming={renamingId === host.id}
             renameValue={renameValue}
             saving={savingId === host.id}
-            stopConfirming={stopConfirmingId === host.id}
-            stopping={stoppingId === host.id}
+            tails={tails}
+            stopConfirmingId={stopConfirmingId}
+            stoppingId={stoppingId}
             copiedKey={copiedKey}
             failedKey={failedKey}
             onCopy={copy}
@@ -1065,16 +1150,16 @@ export default function App({ appId, token }) {
             onRenameChange={setRenameValue}
             onRenameSave={() => saveRename(host)}
             onRenameCancel={() => setRenamingId(null)}
-            onStopConfirm={() => {
+            onStopConfirm={command => {
               setRemoveConfirmingId(null)
               setOutboundConfirmId(null)
               setUpdateConfirmingId(null)
               setConfirmingId(null)
               setRenamingId(null)
-              setStopConfirmingId(host.id)
+              setStopConfirmingId(command.id)
             }}
             onStopKeep={() => setStopConfirmingId(null)}
-            onStop={() => stopCommand(host)}
+            onStop={command => stopCommand(host, command)}
             updateConfirming={updateConfirmingId === host.id}
             updating={updatingId === host.id}
             updateResult={updateResult}

@@ -2,6 +2,7 @@ import contextlib
 import importlib.machinery
 import importlib.util
 import io
+import json
 import os
 import threading
 import unittest
@@ -101,13 +102,13 @@ class MachTargetingTest(unittest.TestCase):
         with contextlib.redirect_stderr(stderr), self.assertRaises(SystemExit) as raised:
             mach.main(["-m", "Host", "-t", "later", "echo ok"])
         self.assertEqual(raised.exception.code, 1)
-        self.assertIn("whole number from 1 to 3600", stderr.getvalue())
+        self.assertIn("whole number of seconds, at least 1", stderr.getvalue())
 
-    def test_timeout_outside_range_is_not_silently_clamped(self):
+    def test_timeout_below_one_second_is_not_silently_clamped(self):
         mach = load_mach()
         mach._hosts = mock.Mock()
 
-        for raw_timeout in ("0", "3601"):
+        for raw_timeout in ("0", "-5"):
             with self.subTest(raw_timeout=raw_timeout), \
                     contextlib.redirect_stderr(io.StringIO()), \
                     self.assertRaises(SystemExit) as raised:
@@ -389,6 +390,240 @@ class MachTargetingTest(unittest.TestCase):
             self.assertEqual(raised.exception.code, 2)
 
 
+class MachStreamingTest(unittest.TestCase):
+    HOST = {"id": "h_test", "name": "Host", "online": True}
+
+    def streaming_mach(self, views, calls=None):
+        """A Möbius that starts the command, then answers output reads."""
+        mach = load_mach()
+        mach._hosts = lambda: [self.HOST]
+        views = list(views)
+        state = {"request_id": None}
+
+        def call(path, payload=None, method="GET", retry_until=None):
+            if calls is not None:
+                calls.append((path, payload, method))
+            if path.endswith("/exec"):
+                state["request_id"] = payload["request_id"]
+                return {"request_id": payload["request_id"], "state": "running"}
+            if "/output?" in path:
+                view = views.pop(0)
+                if callable(view):
+                    view = view(state["request_id"])
+                return {"request_id": state["request_id"], **view}
+            return {"ok": True}
+
+        mach._call = call
+        return mach, state
+
+    @staticmethod
+    def result(exit_code=0, stdout="", stderr="", truncated=False):
+        return {"stdout": stdout, "stderr": stderr, "exit_code": exit_code,
+                "truncated": truncated}
+
+    def run_mach(self, mach, argv):
+        stdout, stderr = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+            code = mach.main(argv)
+        return code, stdout.getvalue(), stderr.getvalue()
+
+    def test_output_prints_as_it_arrives_then_exits_with_remote_status(self):
+        calls = []
+        mach, _state = self.streaming_mach([
+            {"chunks": [{"seq": 0, "stream": "stdout", "text": "step 1\n"}],
+             "next": 1, "gap": False, "result": None},
+            {"chunks": [{"seq": 1, "stream": "stderr", "text": "warn\n"}],
+             "next": 2, "gap": False, "result": None},
+            lambda request_id: {
+                "chunks": [], "next": 2, "gap": False, "output_seq": 2,
+                "result": {"request_id": request_id,
+                           **self.result(3, "step 1\n", "warn\n")}},
+        ], calls)
+        code, out, err = self.run_mach(mach, ["-m", "Host", "-t", "7200", "make"])
+
+        self.assertEqual(code, 3)
+        # Streamed text is printed once; the final result is not repeated.
+        self.assertEqual(out, "step 1\n")
+        self.assertEqual(err, "warn\n")
+        exec_payload = calls[0][1]
+        self.assertTrue(exec_payload["stream"])
+        self.assertEqual(exec_payload["timeout"], 7200)
+        self.assertIn("after=1", calls[2][0])
+        self.assertIn("after=2", calls[3][0])
+
+    def test_runner_without_live_output_prints_the_final_result(self):
+        mach, state = self.streaming_mach([])
+
+        def call(path, payload=None, method="GET", retry_until=None):
+            if path.endswith("/exec"):
+                state["request_id"] = payload["request_id"]
+                return {"request_id": payload["request_id"], "state": "running"}
+            return {"request_id": state["request_id"], "chunks": [], "next": 0,
+                    "gap": False, "output_seq": None,
+                    "result": {"request_id": state["request_id"],
+                               **self.result(0, "all at once\n")}}
+
+        mach._call = call
+        code, out, _err = self.run_mach(mach, ["-m", "Host", "uname"])
+        self.assertEqual((code, out), (0, "all at once\n"))
+
+    def test_lost_live_output_is_announced_and_the_final_output_follows(self):
+        mach, state = self.streaming_mach([])
+
+        def call(path, payload=None, method="GET", retry_until=None):
+            if path.endswith("/exec"):
+                state["request_id"] = payload["request_id"]
+                return {"request_id": payload["request_id"], "state": "running"}
+            return {"request_id": state["request_id"],
+                    "chunks": [{"seq": 0, "stream": "stdout", "text": "a\n"}],
+                    "next": 1, "gap": False, "output_seq": 3,
+                    "result": {"request_id": state["request_id"],
+                               **self.result(0, "a\nb\nc\n")}}
+
+        mach._call = call
+        code, out, err = self.run_mach(mach, ["-m", "Host", "job"])
+        self.assertEqual(code, 0)
+        self.assertEqual(out, "a\na\nb\nc\n")
+        self.assertIn("some live output was not delivered", err)
+
+    def test_ctrl_c_while_attached_stops_following_without_cancelling(self):
+        mach = load_mach()
+        mach._hosts = lambda: [self.HOST]
+        calls = []
+
+        def call(path, payload=None, method="GET", retry_until=None):
+            calls.append((path, method))
+            raise KeyboardInterrupt
+
+        mach._call = call
+        code, _out, err = self.run_mach(mach, ["-m", "Host", "--attach", "b" * 16])
+        self.assertEqual(code, 130)
+        self.assertEqual(len(calls), 1)
+        self.assertIn("/commands/" + "b" * 16 + "/output?after=0", calls[0][0])
+        self.assertIn("keeps running", err)
+
+    def test_ctrl_c_while_streaming_a_started_command_cancels_it(self):
+        calls = []
+        mach, _state = self.streaming_mach([], calls)
+        original = mach._call
+
+        def call(path, payload=None, method="GET", retry_until=None):
+            if "/output?" in path:
+                calls.append((path, payload, method))
+                raise KeyboardInterrupt
+            return original(path, payload, method, retry_until)
+
+        mach._call = call
+        code, _out, err = self.run_mach(mach, ["-m", "Host", "sleep 99"])
+        self.assertEqual(code, 130)
+        self.assertTrue(calls[-1][0].endswith("/cancel"))
+        self.assertIn("asked Host to stop", err)
+
+    def test_commands_lists_running_ids_and_labels(self):
+        mach = load_mach()
+        mach._hosts = lambda: [self.HOST]
+        mach._call = lambda path, *args, **kwargs: {
+            "running": [{"id": "c" * 16, "state": "running",
+                         "started_at": mach.time.time() - 5, "timeout": 3600,
+                         "label": "docker build ."}],
+            "recent": [{"id": "d" * 16, "finished_at": mach.time.time() - 2,
+                        "outcome": "completed", "exit_code": 0}],
+        }
+        code, out, _err = self.run_mach(mach, ["-m", "Host", "--commands"])
+        self.assertEqual(code, 0)
+        self.assertIn("c" * 16 + "  running", out)
+        self.assertIn("docker build .", out)
+        self.assertIn("d" * 16 + "  finished", out)
+
+
+class MachFollowEdgeTest(unittest.TestCase):
+    HOST = {"id": "h_test", "name": "Host", "online": True}
+
+    def run_mach(self, mach, argv):
+        stdout, stderr = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+            code = mach.main(argv)
+        return code, stdout.getvalue(), stderr.getvalue()
+
+    def test_gives_up_after_the_time_limit_when_no_result_arrives(self):
+        mach = load_mach()
+        mach._hosts = lambda: [self.HOST]
+        clock = {"now": 1000.0}
+
+        def call(path, payload=None, method="GET", retry_until=None):
+            if path.endswith("/exec"):
+                return {"request_id": payload["request_id"], "state": "running"}
+            clock["now"] += 30  # each silent long-poll takes time
+            rid = path.split("/commands/")[1].split("/")[0]
+            return {"request_id": rid, "chunks": [], "next": 0, "result": None}
+
+        mach._call = call
+        with mock.patch.object(mach.time, "monotonic", lambda: clock["now"]):
+            code, _out, err = self.run_mach(
+                mach, ["-m", "Host", "-t", "5", "sleep 999"],
+            )
+        self.assertEqual(code, 124)
+        self.assertIn("may be offline", err)
+        self.assertIn("--attach", err)
+
+    def test_attach_shows_only_the_latest_backlog(self):
+        mach = load_mach()
+        mach._hosts = lambda: [self.HOST]
+        big = [{"seq": i, "stream": "stdout", "text": f"{i:06d}" + "x" * 993 + "\n"}
+               for i in range(100)]
+        rid = "a" * 16
+        mach._call = lambda path, *a, **k: {
+            "request_id": rid, "chunks": big, "next": 100, "output_seq": 100,
+            "result": {"request_id": rid, "stdout": "", "stderr": "",
+                       "exit_code": 0, "truncated": False},
+        }
+        code, out, err = self.run_mach(mach, ["-m", "Host", "--attach", rid])
+        self.assertEqual(code, 0)
+        self.assertLessEqual(len(out), mach._ATTACH_BACKLOG_CHARS)
+        self.assertTrue(out.endswith("x\n"))
+        self.assertIn("000099", out)
+        self.assertNotIn("000000", out)
+        self.assertIn("showing the latest output", err)
+        self.assertNotIn("not delivered", err)
+
+    def test_a_sequence_jump_is_announced_and_the_final_output_follows(self):
+        mach = load_mach()
+        mach._hosts = lambda: [self.HOST]
+        state = {}
+
+        def call(path, payload=None, method="GET", retry_until=None):
+            if path.endswith("/exec"):
+                state["rid"] = payload["request_id"]
+                return {"request_id": state["rid"], "state": "running"}
+            return {"request_id": state["rid"], "next": 4, "output_seq": 4,
+                    "chunks": [{"seq": 0, "stream": "stdout", "text": "a\n"},
+                               {"seq": 3, "stream": "stdout", "text": "d\n"}],
+                    "result": {"request_id": state["rid"], "stdout": "a\nb\nc\nd\n",
+                               "stderr": "", "exit_code": 0, "truncated": False}}
+
+        mach._call = call
+        code, out, err = self.run_mach(mach, ["-m", "Host", "job"])
+        self.assertEqual(code, 0)
+        self.assertIn("some output was not kept", err)
+        self.assertTrue(out.endswith("a\nb\nc\nd\n"))
+
+    def test_attach_rejects_anything_but_a_command_id(self):
+        mach = load_mach()
+        mach._hosts = mock.Mock()
+        for bad in ("../hosts?x=1", "-t", "abc"):
+            with self.subTest(bad=bad), contextlib.redirect_stderr(io.StringIO()), \
+                    self.assertRaises(SystemExit):
+                mach.main(["-m", "Host", "--attach", bad])
+        mach._hosts.assert_not_called()
+
+    def test_time_limit_beyond_a_year_is_refused_locally(self):
+        mach = load_mach()
+        mach._hosts = mock.Mock()
+        with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+            mach.main(["-m", "Host", "-t", str(mach._MAX_TIMEOUT + 1), "true"])
+        mach._hosts.assert_not_called()
+
+
 class MachHttpErrorTest(unittest.TestCase):
     def test_short_calls_use_a_bounded_network_timeout(self):
         mach = load_mach()
@@ -607,3 +842,25 @@ class MachResponseValidationTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class MachValidationDetailTest(unittest.TestCase):
+    def test_request_validation_errors_read_as_messages(self):
+        mach = load_mach()
+        body = json.dumps({"detail": [
+            {"loc": ["body", "timeout"], "msg": "Input should be less than or equal to 3600"},
+        ]}).encode()
+        error = urllib.error.HTTPError(
+            "http://mobius.test/api/connect/hosts/h/exec", 422, "Unprocessable",
+            {}, io.BytesIO(body),
+        )
+        stderr = io.StringIO()
+        with mock.patch.dict(os.environ, {
+            "API_BASE_URL": "http://mobius.test", "AGENT_TOKEN": "t",
+        }), mock.patch.object(mach._API_OPENER, "open", side_effect=error), \
+                contextlib.redirect_stderr(stderr), self.assertRaises(SystemExit):
+            mach._call("/api/connect/hosts/h/exec", {}, "POST")
+        self.assertEqual(
+            stderr.getvalue().strip(),
+            "mach: Input should be less than or equal to 3600",
+        )

@@ -64,7 +64,6 @@ test('runner updates require a local confirmation and use the selected host comm
   assert.match(source, /currentResult\?\.exitCode === 125 \? 'Try update again'/)
   assert.match(source, /currentResult\.exitCode === 125 \|\| currentResult\.errorKind === 'expired' \? ' is-waiting'/)
   assert.doesNotMatch(source, /confirming \? 'Not now'/)
-  assert.match(source, /A command is running through another Möbius instance/)
 })
 
 test('online update and disconnect panels share action-first manual-command layout', () => {
@@ -96,7 +95,18 @@ test('confirmations stay local to their action and do not reflow machine rows', 
   assert.match(source, /function InlineActionConfirm\(/)
   assert.match(source, /aria-expanded=\{open\}/)
   assert.match(source, /id=\{`cn-revoke-\$\{connection\.id\}`\}/)
-  assert.match(source, /id=\{`cn-stop-\$\{host\.id\}`\}/)
+  assert.match(source, /id=\{`cn-stop-\$\{host\.id\}-\$\{command\.id\}`\}/)
   assert.match(source, /confirmLabel=\{host\.online \? 'Confirm disconnect'/)
   assert.doesNotMatch(source, /cn-outbound-confirm|cn-command-confirm|cn-update-popover/)
+})
+
+test('a runner supervised by another Möbius explains its update instead of offering an installer', () => {
+  assert.match(source, /host\.runner_managed === 'mobius'/)
+  assert.match(source, /It installs the current runner the next time it restarts\./)
+})
+
+test('live output polling never overlaps and only targets platforms with the route', () => {
+  assert.match(source, /if \(inFlight\) return/)
+  assert.match(source, /\.filter\(host => Array\.isArray\(host\.active_commands\)\)/)
+  assert.doesNotMatch(source, /busy_source/)
 })

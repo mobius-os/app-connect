@@ -12,7 +12,9 @@ Usage:
   mach -m <machine> -C <absolute-dir> '<command>'
                                                 run it from a remote directory
   mach -m <machine> --script [--shell <name>]   read a literal script from stdin
-  mach -m <machine> -t <seconds> '<command>'    raise the timeout (default 60, max 3600)
+  mach -m <machine> -t <seconds> '<command>'    set the time limit (default 60, up to a year)
+  mach -m <machine> --commands                  list running and recently finished commands
+  mach -m <machine> --attach <id>               follow a command's output until it ends
   mach --list                                   list paired machines (name, status, id)
 
   <machine> matches a machine's name (case-insensitive substring) or its host id
@@ -32,6 +34,13 @@ Usage:
   directly to the remote runner, so use an absolute path. Every call remains
   self-contained: there is no remembered machine, directory, or environment.
 
+  Output streams while the command runs. At its time limit the machine stops
+  the command and its whole process tree (exit 124). A machine with a current
+  runner runs several commands at once; each has its own id and time limit.
+  If this call is killed, the command keeps running; `--commands` shows its id
+  and `--attach <id>` resumes with its latest output. Ctrl-C (SIGINT) stops
+  the command; Ctrl-C while attached only stops following it.
+
 Reads AGENT_TOKEN and API_BASE_URL from the environment.
 
 Authenticated API calls connect directly to API_BASE_URL, ignore proxy
@@ -44,6 +53,7 @@ import json
 import ntpath
 import os
 import posixpath
+import re
 import secrets
 import sys
 import time
@@ -57,6 +67,19 @@ _MAX_COMMAND_CHARS = 64 * 1024
 _MAX_WINDOWS_COMMAND_CHARS = 8_000
 _DEFAULT_HTTP_TIMEOUT = 30
 _MAX_HTTP_TIMEOUT = 3660
+# One output long-poll; Möbius answers sooner when output or the result arrives.
+_OUTPUT_WAIT_SECONDS = 20
+# How long to keep retrying one output read through a Möbius restart.
+_OUTPUT_RETRY_SECONDS = 180
+# Mention how to re-attach once a command has run this long.
+_ATTACH_HINT_AFTER_SECONDS = 10
+# Attaching prints at most this much earlier output before following along.
+_ATTACH_BACKLOG_CHARS = 20_000
+# How long past a command's time limit to wait for its result.
+_RESULT_GRACE_SECONDS = 75
+# Möbius rejects longer limits as invalid; a year is not a working limit.
+_MAX_TIMEOUT = 365 * 24 * 60 * 60
+_REQUEST_ID_RE = re.compile(r"[a-f0-9]{16,64}")
 _REDIRECT_CODES = frozenset((301, 302, 303, 307, 308))
 
 
@@ -147,6 +170,12 @@ def _call(
                 parsed = json.loads(detail)
                 if isinstance(parsed, dict) and parsed.get("detail"):
                     detail = parsed["detail"]
+                if isinstance(detail, list):
+                    # Request validation: keep only the human messages.
+                    detail = "; ".join(
+                        str(item.get("msg")) for item in detail
+                        if isinstance(item, dict) and item.get("msg")
+                    )
             except ValueError:
                 pass
             if not str(detail).strip():
@@ -281,6 +310,8 @@ def main(argv) -> int:
     cwd = None
     script_mode = False
     shell = None
+    list_commands = False
+    attach_id = None
     cmd_parts: list[str] = []
     it = iter(argv)
     for tok in it:
@@ -296,9 +327,9 @@ def main(argv) -> int:
             try:
                 timeout = int(raw_timeout)
             except (TypeError, ValueError):
-                _fail("mach: timeout must be a whole number from 1 to 3600 seconds.")
-            if not 1 <= timeout <= 3600:
-                _fail("mach: timeout must be a whole number from 1 to 3600 seconds.")
+                _fail("mach: timeout must be a whole number of seconds, at least 1.")
+            if not 1 <= timeout <= _MAX_TIMEOUT:
+                _fail("mach: timeout must be a whole number of seconds, at least 1.")
         elif tok in ("-C", "--cwd"):
             cwd = next(it, None)
             if not cwd:
@@ -312,6 +343,12 @@ def main(argv) -> int:
         elif tok == "--list":
             print(_format(_hosts()))
             return 0
+        elif tok == "--commands":
+            list_commands = True
+        elif tok == "--attach":
+            attach_id = next(it, None)
+            if not attach_id or not _REQUEST_ID_RE.fullmatch(attach_id):
+                _fail("mach: --attach needs a command id from `--commands`.")
         elif tok in ("-h", "--help"):
             print(__doc__)
             return 0
@@ -322,6 +359,13 @@ def main(argv) -> int:
     if machine is None:
         _fail("mach: name a machine with -m <machine>. Paired machines:\n"
               + _format(_hosts()))
+    if list_commands or attach_id is not None:
+        if cmd_parts or script_mode or (list_commands and attach_id is not None):
+            _fail("mach: --commands and --attach take no command to run.")
+        host = _resolve_host(machine)
+        if list_commands:
+            return _print_commands(host)
+        return _follow(host, attach_id, attached=True)
     if script_mode and cmd_parts:
         _fail("mach: --script reads stdin; do not also provide an inline command.")
     if shell is not None and not script_mode:
@@ -332,14 +376,7 @@ def main(argv) -> int:
             "with --script."
         )
 
-    hosts = _hosts()
-    matches = _matches(hosts, machine)
-    if not matches:
-        _fail(f"mach: no paired machine matches '{machine}'. Paired machines:\n"
-              + _format(hosts))
-    if len(matches) > 1:
-        _fail(f"mach: '{machine}' is ambiguous — it matches:\n" + _format(matches))
-    host = matches[0]
+    host = _resolve_host(machine)
     if not host.get("online"):
         _fail(f"mach: {host['name']} is offline right now.")
     if cwd is not None and not _is_absolute_remote_path(
@@ -370,7 +407,7 @@ def main(argv) -> int:
         )
 
     request_id = secrets.token_hex(8)
-    payload = {"timeout": timeout, "request_id": request_id}
+    payload = {"timeout": timeout, "request_id": request_id, "stream": True}
     if script_mode:
         # The current runner carries the exact script as data. It never becomes
         # a local or remote command-line argument, avoiding quoting and OS limits.
@@ -388,33 +425,202 @@ def main(argv) -> int:
             f"/api/connect/hosts/{host['id']}/exec",
             payload,
             "POST",
-            time.monotonic() + timeout + 75,
+            time.monotonic() + timeout + _RESULT_GRACE_SECONDS,
         )
+        if "exit_code" in res:
+            # A Möbius without live output waits and returns the final result.
+            return _print_result(res, request_id)
+        if res.get("request_id") != request_id:
+            _fail("mach: Möbius returned an invalid command result.", 2)
+        return _follow(host, request_id, attached=False, timeout=timeout)
     except KeyboardInterrupt:
-        try:
-            _call(
-                f"/api/connect/hosts/{host['id']}/commands/{request_id}/cancel",
-                {}, "POST",
-            )
-            sys.stderr.write(
-                f"\nmach: asked {host['name']} to stop the command.\n"
-            )
-        except SystemExit:
-            sys.stderr.write(
-                "mach: stopped waiting, but remote cancellation was not "
-                "confirmed. Check Connect before sending another command.\n"
-            )
+        _cancel(host, request_id)
         return 130
+
+
+def _resolve_host(machine: str) -> dict:
+    hosts = _hosts()
+    matches = _matches(hosts, machine)
+    if not matches:
+        _fail(f"mach: no paired machine matches '{machine}'. Paired machines:\n"
+              + _format(hosts))
+    if len(matches) > 1:
+        _fail(f"mach: '{machine}' is ambiguous — it matches:\n" + _format(matches))
+    return matches[0]
+
+
+def _cancel(host: dict, request_id: str) -> None:
+    try:
+        _call(
+            f"/api/connect/hosts/{host['id']}/commands/{request_id}/cancel",
+            {}, "POST",
+        )
+        sys.stderr.write(
+            f"\nmach: asked {host['name']} to stop the command.\n"
+        )
+    except SystemExit:
+        sys.stderr.write(
+            "mach: stopped waiting, but remote cancellation was not "
+            "confirmed. Check Connect before relying on it having stopped.\n"
+        )
+
+
+def _print_result(res, request_id: str, *, bodies: bool = True) -> int:
     stdout, stderr, exit_code, truncated = _command_result(res, request_id)
-    sys.stdout.write(stdout)
-    sys.stderr.write(stderr)
-    if truncated:
-        sys.stderr.write("\nmach: output was truncated by Möbius.\n")
-    if exit_code and not stdout and not stderr:
+    if bodies:
+        sys.stdout.write(stdout)
+        sys.stderr.write(stderr)
+        if truncated:
+            sys.stderr.write("\nmach: output was truncated by Möbius.\n")
+    if exit_code and not (stdout or stderr):
         sys.stderr.write(
             f"mach: remote command exited {exit_code} without producing output.\n"
         )
     return exit_code
+
+
+def _output_view(view, request_id: str):
+    chunks = view.get("chunks")
+    next_seq = view.get("next")
+    if (
+        view.get("request_id") != request_id
+        or not isinstance(chunks, list)
+        or isinstance(next_seq, bool)
+        or not isinstance(next_seq, int)
+        or any(
+            not isinstance(chunk, dict)
+            or chunk.get("stream") not in ("stdout", "stderr")
+            or not isinstance(chunk.get("text"), str)
+            or isinstance(chunk.get("seq"), bool)
+            or not isinstance(chunk.get("seq"), int)
+            for chunk in chunks
+        )
+    ):
+        _fail("mach: Möbius returned an invalid output response.", 2)
+    return chunks, next_seq
+
+
+def _latest(chunks: list) -> list:
+    """The newest chunks that fit the attach backlog, oldest first."""
+    kept, size = [], 0
+    for chunk in reversed(chunks):
+        size += len(chunk["text"])
+        if kept and size > _ATTACH_BACKLOG_CHARS:
+            break
+        kept.append(chunk)
+    return kept[::-1]
+
+
+def _follow(
+    host: dict, request_id: str, *, attached: bool, timeout: int | None = None,
+) -> int:
+    """Print a command's output as it arrives, then exit with its status.
+
+    Attaching starts from the latest output rather than replaying everything.
+    A call that started the command stops waiting once its time limit plus a
+    grace period passes without a result: the machine may be offline, and the
+    command can still be attached to later.
+    """
+    cursor = 0
+    printed = False
+    missed = False
+    backlog = attached
+    hinted = attached
+    began = time.monotonic()
+    give_up_at = None if timeout is None else began + timeout + _RESULT_GRACE_SECONDS
+    base = f"/api/connect/hosts/{host['id']}/commands/{request_id}/output"
+    try:
+        while True:
+            view = _call(
+                f"{base}?after={cursor}&wait={_OUTPUT_WAIT_SECONDS}",
+                retry_until=time.monotonic() + _OUTPUT_RETRY_SECONDS,
+            )
+            chunks, next_seq = _output_view(view, request_id)
+            if backlog:
+                backlog = False
+                latest = _latest(chunks)
+                if len(latest) < len(chunks):
+                    sys.stderr.write("mach: …showing the latest output…\n")
+                    chunks = latest
+                    cursor = latest[0]["seq"]
+            for chunk in chunks:
+                if chunk["seq"] != cursor:
+                    missed = True
+                    sys.stderr.write("\nmach: …some output was not kept…\n")
+                target = sys.stdout if chunk["stream"] == "stdout" else sys.stderr
+                target.write(chunk["text"])
+                target.flush()
+                printed = True
+                cursor = chunk["seq"] + 1
+            cursor = max(cursor, next_seq)
+            result = view.get("result")
+            if isinstance(result, dict):
+                output_seq = view.get("output_seq")
+                if isinstance(output_seq, int) and cursor < output_seq:
+                    missed = True
+                if printed and missed:
+                    sys.stderr.write(
+                        "\nmach: some live output was not delivered; the "
+                        "command's final output follows.\n"
+                    )
+                return _print_result(
+                    result, request_id, bodies=(not printed or missed),
+                )
+            now = time.monotonic()
+            if give_up_at is not None and now >= give_up_at:
+                sys.stderr.write(
+                    f"mach: {host['name']} has not reported {request_id} "
+                    "after its time limit; the machine may be offline. "
+                    f"Check later with --attach {request_id}.\n"
+                )
+                return 124
+            if not hinted and now - began >= _ATTACH_HINT_AFTER_SECONDS:
+                hinted = True
+                sys.stderr.write(
+                    f"mach: still running on {host['name']} as {request_id}. "
+                    f"If this call is killed, resume with: "
+                    f"mach -m {host['id']} --attach {request_id}\n"
+                )
+    except KeyboardInterrupt:
+        if not attached:
+            raise
+        sys.stderr.write(
+            f"\nmach: stopped following; {request_id} keeps running on "
+            f"{host['name']}.\n"
+        )
+        return 130
+
+
+def _print_commands(host: dict) -> int:
+    listing = _call(f"/api/connect/hosts/{host['id']}/commands")
+    running = listing.get("running")
+    recent = listing.get("recent")
+    if not isinstance(running, list) or not isinstance(recent, list):
+        _fail("mach: Möbius returned an invalid command list.", 2)
+    now = time.time()
+    lines = [f"{host['name']}:"]
+    if not running:
+        lines.append("  nothing running")
+    for item in running:
+        if not isinstance(item, dict):
+            continue
+        started = item.get("started_at")
+        age = f"{int(now - started)}s ago" if isinstance(started, (int, float)) else "starting"
+        lines.append(
+            f"  {item.get('id')}  {item.get('state')}  started {age}  "
+            f"limit {item.get('timeout')}s  {item.get('label') or ''}".rstrip()
+        )
+    for item in recent:
+        if not isinstance(item, dict):
+            continue
+        finished = item.get("finished_at")
+        age = f"{int(now - finished)}s ago" if isinstance(finished, (int, float)) else ""
+        lines.append(
+            f"  {item.get('id')}  finished {age}  {item.get('outcome')} "
+            f"(exit {item.get('exit_code')})"
+        )
+    print("\n".join(lines))
+    return 0
 
 
 if __name__ == "__main__":

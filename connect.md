@@ -55,14 +55,29 @@ forwarding owner authorization to another destination.
   script rather than a growing `cd … && …` one-liner.
 - Batch related inspection, but keep failures legible. Label important guards
   instead of relying on a silent `test` under `set -e`.
-- Each machine accepts one command at a time. A busy response never queues work;
-  wait for completion or stop the active command in Connect.
+- Every command has a time limit: 60 seconds unless you pass `-t <seconds>`
+  (anything up to a year). At the limit the machine terminates the command and
+  its whole process tree, reported as exit 124. Before starting anything slower
+  than a quick inspection — builds, deploys, installs, downloads, test suites —
+  pass a generous `-t` up front; a killed build is not a partial success.
+- Output streams while the command runs. If your tool kills `mach` before the
+  command finishes, the command keeps running: `"$mach" -m <machine>
+  --commands` lists running ids and `"$mach" -m <machine> --attach <id>`
+  resumes with its latest output and exit status. Attach instead of starting
+  the work again. For work longer than your tool-call limit, expect to attach.
+- A machine with a current runner runs several commands at once, so you can
+  inspect it while a long command runs. Each command is independent; Connect
+  never queues one behind another. Coordinate conflicting work yourself — two
+  deploys on the same machine still conflict.
+- An older runner runs one command at a time and answers busy instead; its
+  saved machine shows an update command in Connect.
 - Read-only inspection needs no extra approval. Destructive, irreversible,
   paid, or externally visible actions still require the partner's explicit
   confirmation.
-- Ctrl-C asks a current runner to stop the exact command and its process tree.
-  Do not send another command until cancellation is confirmed or Connect shows
-  the machine idle.
+- Ctrl-C (SIGINT) asks the runner to stop the exact command and its process
+  tree; being killed does not. Ctrl-C while attached only stops following.
+  Before re-running work you stopped, confirm with `--commands` that it is no
+  longer running.
 
 For sustained work made up of many remote commands, prefer a coding agent
 running directly on that machine rather than turning `mach` into a high-latency

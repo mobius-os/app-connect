@@ -40,21 +40,30 @@ access and removes it from the app, but cannot remove the local service files.
 
 ## Command lifecycle
 
-Online and available are distinct. Connect shows **Working** while a machine is
-running one command and rejects parallel work rather than hiding it in a queue.
-Stopping a command terminates the shell and every process it started. A command
-that is not acknowledged promptly expires before the runner is allowed to
-spawn it, so caller timeouts cannot become delayed side effects.
+Online and available are distinct. Connect shows **Working** while a machine
+runs commands. A current runner runs several commands at once; each has its
+own id, time limit, live output, and **Stop**, and nothing ever waits in a
+hidden queue. Stopping a command terminates its shell and every process it
+started. A command that is not acknowledged promptly expires before the runner
+is allowed to spawn it, so caller timeouts cannot become delayed side effects.
+
+Every command has a time limit — 60 seconds unless the caller asks for more,
+up to a year. Output streams to Möbius while the command runs, and the
+app shows the latest lines under each running command. The final result also
+carries the head and tail of each stream for callers that never read live
+output.
 
 Commands keep one stable identity while the runner reconnects. The runner
-retains an unsent result until Möbius accepts it, and Möbius retains the
-active command plus a short-lived completed result so a lost caller can retry
-without repeating the work. A routine ten-minute stream renewal therefore does
-not impose a ten-minute command limit. Command text is discarded from durable
-state as soon as execution starts.
+retains an unsent result until Möbius accepts it, and Möbius retains active
+commands plus short-lived completed results so a lost caller can retry or
+re-attach without repeating the work. A routine ten-minute stream renewal
+therefore does not impose a ten-minute command limit. Command text is
+discarded from durable state as soon as execution starts.
 
-Older paired runners continue to work in single-flight mode. Connect offers an
-in-place update command before it enables remote cancellation for them.
+Runners from before parallel commands keep working one command at a time,
+with final results only, and show an in-place update command. A runner that
+another Möbius supervises (through **Can control this Möbius**) is updated by
+that Möbius instead: it installs the current runner whenever it starts it.
 
 ## Shared access
 
@@ -81,6 +90,14 @@ structured data, and accepts literal scripts without nested shell escaping:
 set -euo pipefail
 docker compose ps --format json
 MACH
+```
+
+Output prints as it arrives. `-t <seconds>` sets the time limit (default 60).
+If `mach` is killed, the command keeps running; Ctrl-C stops it:
+
+```bash
+/data/apps/connect/mach -m Host --commands          # running ids and labels
+/data/apps/connect/mach -m Host --attach <id>       # resume with its latest output
 ```
 
 The quoted heredoc delimiter keeps the script literal in the local shell.

@@ -2,9 +2,12 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import {
+  activeCommands,
+  appendTail,
   cancelCommandPath,
   commandCapabilities,
   disconnectPresentation,
+  outputPath,
   statusOf,
 } from './connect-state.mjs'
 
@@ -14,23 +17,47 @@ test('busy is distinct from online and takes precedence over an update', () => {
   }), { cls: 'busy', label: 'Working' })
 })
 
-test('cancel targets the exact host and active command', () => {
-  const host = {
-    id: 'h_machine',
-    active_command: { id: 'aabbccddeeff0011', state: 'canceling' },
-  }
-  assert.deepEqual(commandCapabilities(host), {
+test('several running commands are counted in the machine status', () => {
+  assert.deepEqual(statusOf({
+    online: true,
+    busy: true,
+    active_commands: [{ id: 'a' }, { id: 'b' }],
+  }), { cls: 'busy', label: 'Working · 2' })
+})
+
+test('a Möbius from before parallel commands still reports its one command', () => {
+  const command = { id: 'aabbccddeeff0011', state: 'running' }
+  assert.deepEqual(activeCommands({ active_command: command }), [command])
+  assert.deepEqual(activeCommands({ active_command: null }), [])
+  assert.deepEqual(activeCommands({ active_commands: [] }), [])
+})
+
+test('cancel and output target the exact host and command', () => {
+  const host = { id: 'h_machine' }
+  const command = { id: 'aabbccddeeff0011', state: 'canceling' }
+  assert.deepEqual(commandCapabilities(command), {
     canStop: true, stopping: true, state: 'canceling',
   })
   assert.equal(
-    cancelCommandPath(host),
+    cancelCommandPath(host, command),
     '/api/connect/hosts/h_machine/commands/aabbccddeeff0011/cancel',
   )
-  assert.equal(cancelCommandPath({ ...host, active_command: null }), null)
-  assert.equal(cancelCommandPath({ ...host, id: '' }), null)
-  assert.deepEqual(commandCapabilities({ active_command: { state: 'running' } }), {
+  assert.equal(
+    outputPath(host, command, 7),
+    '/api/connect/hosts/h_machine/commands/aabbccddeeff0011/output?after=7',
+  )
+  assert.equal(cancelCommandPath(host, null), null)
+  assert.equal(cancelCommandPath({ id: '' }, command), null)
+  assert.deepEqual(commandCapabilities({ state: 'running' }), {
     canStop: false, stopping: false, state: 'running',
   })
+})
+
+test('the live tail keeps only the latest lines across chunk boundaries', () => {
+  let tail = appendTail('', [{ text: 'step 1\nstep ' }], 3)
+  tail = appendTail(tail, [{ text: '2\nstep 3\n' }, { text: 'step 4\n' }], 3)
+  assert.equal(tail, 'step 2\nstep 3\nstep 4\n')
+  assert.equal(appendTail(tail, [], 3), tail)
 })
 
 test('online disconnect makes the button primary and explains the local fallback', () => {
@@ -61,4 +88,9 @@ test('an unpaired entry is removed without implying that a runner exists', () =>
     commandTitle: null,
     commandDescription: null,
   })
+})
+
+test('a tail without line breaks stays bounded', () => {
+  const tail = appendTail('', [{ text: 'x'.repeat(10000) }], 12, 4000)
+  assert.equal(tail.length, 4000)
 })

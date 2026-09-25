@@ -66,8 +66,13 @@ const CSS = `
   .cn-agent-choice { display: flex; align-items: flex-start; gap: 9px; margin-top: 13px; font-size: 13px; line-height: 1.4; cursor: pointer; }
   .cn-agent-choice input, .cn-agent-toggle input { width: 16px; height: 16px; margin: 2px 0 0; accent-color: var(--cn-violet); flex: none; }
   .cn-agent-choice small { display: block; color: var(--muted); font-size: 11.5px; }
-  .cn-agent-toggle { display: inline-flex; align-items: center; gap: 6px; flex: none; color: var(--muted); font-size: 12px; cursor: pointer; }
+  .cn-agent-toggle { min-height: 40px; display: inline-flex; align-items: center; gap: 8px; flex: none; padding: 0 13px; border: 1px solid var(--border); border-radius: 11px; color: var(--muted); font: 650 12.5px var(--font); white-space: nowrap; cursor: pointer; transition: background 160ms ease-out, color 160ms ease-out; }
+  .cn-agent-toggle:hover { background: var(--surface-2); }
+  .cn-agent-toggle.is-on { color: var(--text); border-color: color-mix(in srgb, var(--cn-violet) 45%, var(--border)); background: color-mix(in srgb, var(--cn-violet) 10%, transparent); }
+  .cn-agent-toggle:focus-within { outline: 2px solid var(--text); outline-offset: 2px; }
   .cn-agent-toggle input { margin: 0; }
+  .cn-agent-toggle input:focus-visible { outline: none; }
+  .cn-outbound-actions { grid-column: 3; grid-row: 1; display: flex; align-items: center; gap: 8px; }
 
   .cn-message { margin: 0 0 16px; padding: 12px 14px; border-radius: 12px; font-size: 13px; line-height: 1.45; }
   .cn-error { color: #ffb7ba; background: color-mix(in srgb, #e5484d 12%, var(--surface)); border: 1px solid color-mix(in srgb, #e5484d 34%, var(--border)); }
@@ -123,7 +128,6 @@ const CSS = `
   .cn-disconnect-alt-copy { margin: 0 0 9px; color: var(--muted); font-size: 11.5px; line-height: 1.45; }
   .cn-command-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
   .cn-command-copy { min-width: 0; }
-  .cn-outbound > .cn-action-anchor { grid-column: 3; grid-row: 1; }
   .cn-command + .cn-command { margin-top: -7px; }
   .cn-command-label { display: block; margin: 0 0 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); font: 600 12px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; }
   .cn-tail { max-height: 196px; overflow: auto; margin: 11px 0 0; padding: 9px 11px; border: 1px solid var(--border); border-radius: 9px; color: color-mix(in srgb, var(--text) 86%, var(--muted)); background: var(--bg); font: 11px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
@@ -146,7 +150,7 @@ const CSS = `
   .cn-rename-actions { display: flex; gap: 8px; flex: none; }
 
   @keyframes cn-pulse { from { transform: scale(.7); opacity: .72; } to { transform: scale(1.9); opacity: 0; } }
-  @media (prefers-reduced-motion: reduce) { .cn-pill-dot::after { animation: none !important; } .cn-btn, .cn-toggle-mark { transition: none; } }
+  @media (prefers-reduced-motion: reduce) { .cn-pill-dot::after { animation: none !important; } .cn-btn, .cn-toggle-mark, .cn-agent-toggle { transition: none; } }
   @media (max-width: 560px) {
     .cn-head-inner { padding-left: 14px; padding-right: 14px; }
     .cn-head-inner::after { left: 14px; right: 14px; }
@@ -170,8 +174,9 @@ const CSS = `
     .cn-disconnect-actions .cn-action-anchor > .cn-btn { width: 100%; }
     .cn-action-popover-actions { align-items: stretch; flex-direction: column-reverse; }
     .cn-action-popover-actions .cn-btn { width: 100%; }
-    .cn-outbound > .cn-action-anchor { grid-column: 2; grid-row: 2; justify-self: start; }
-    .cn-outbound .cn-action-anchor, .cn-outbound .cn-action-anchor > .cn-btn { width: 100%; }
+    .cn-outbound-actions { grid-column: 2; grid-row: 2; }
+    .cn-outbound .cn-action-anchor { flex: 1; }
+    .cn-outbound .cn-action-anchor > .cn-btn { width: 100%; }
     .cn-action-popover { max-width: calc(100vw - 40px); }
     .cn-rename { flex-wrap: wrap; }
     .cn-rename .cn-input { flex-basis: 100%; }
@@ -416,8 +421,8 @@ function OutboundAccess({
       </div>
       {agentSupported ? <label className="cn-agent-choice">
         <input type="checkbox" checked={agent} onChange={event => onAgent(event.target.checked)}/>
-        <span>Also let it act as an agent here
-          <small>It can use this Möbius the way your chats’ agent does, but can’t answer your approvals.</small>
+        <span>Full access
+          <small>It can also use this Möbius the way your chats’ agent does, but can’t answer your approvals.</small>
         </span>
       </label> : null}
       <div className="cn-form-footer">
@@ -444,29 +449,34 @@ function OutboundAccess({
             </div>
             <span className="cn-outbound-meta">{connection.target}</span>
           </div>
-          {agentSupported && connection.status === 'active' ? <label className="cn-agent-toggle">
-            <input
-              type="checkbox"
-              checked={connection.agent}
-              disabled={agentBusyId === connection.id}
-              onChange={event => onToggleAgent(connection, event.target.checked)}
-            />Agent
-          </label> : null}
-          <ActionConfirm
-            id={`cn-revoke-${connection.id}`}
-            open={confirming}
-            title={`Revoke access for ${connection.label}?`}
-            description="This machine will no longer be able to run commands through this Möbius."
-            triggerLabel={connection.online ? 'Revoke' : 'Remove'}
-            confirmLabel={connection.online ? 'Revoke access' : 'Remove access'}
-            confirmingLabel={connection.online ? 'Revoking…' : 'Removing…'}
-            onOpen={() => onConfirm(connection.id)}
-            onCancel={onKeep}
-            onConfirm={() => onRevoke(connection)}
-            disabled={revokingId === connection.id}
-            confirming={revokingId === connection.id}
-            align="end"
-          />
+          <div className="cn-outbound-actions">
+            {agentSupported && connection.status === 'active' ? <label
+              className={`cn-agent-toggle${connection.agent ? ' is-on' : ''}`}
+              title="Also lets it use this Möbius the way your chats’ agent does. It can’t answer your approvals."
+            >
+              <input
+                type="checkbox"
+                checked={connection.agent}
+                disabled={agentBusyId === connection.id}
+                onChange={event => onToggleAgent(connection, event.target.checked)}
+              />Full access
+            </label> : null}
+            <ActionConfirm
+              id={`cn-revoke-${connection.id}`}
+              open={confirming}
+              title={`Revoke access for ${connection.label}?`}
+              description="This machine will no longer be able to run commands through this Möbius."
+              triggerLabel={connection.online ? 'Revoke' : 'Remove'}
+              confirmLabel={connection.online ? 'Revoke access' : 'Remove access'}
+              confirmingLabel={connection.online ? 'Revoking…' : 'Removing…'}
+              onOpen={() => onConfirm(connection.id)}
+              onCancel={onKeep}
+              onConfirm={() => onRevoke(connection)}
+              disabled={revokingId === connection.id}
+              confirming={revokingId === connection.id}
+              align="end"
+            />
+          </div>
         </article>
       })}
     </div> : <div className="cn-empty-row">No machines have access.</div>}
@@ -1051,11 +1061,11 @@ export default function App({ appId, token }) {
         body: JSON.stringify({ agent }),
       })
       if (!response.ok) {
-        throw new Error(await responseError(response, 'Couldn’t change agent access.'))
+        throw new Error(await responseError(response, 'Couldn’t change full access.'))
       }
       await load()
     } catch (cause) {
-      setError(cause.message || 'Couldn’t change agent access.')
+      setError(cause.message || 'Couldn’t change full access.')
     } finally {
       setAgentBusyId(null)
     }

@@ -77,6 +77,13 @@ visible in Connect, and the owner can revoke or remove it from the same section
 at any time. Revocation tears down the supervised outbound runner and removes
 its saved pairing state.
 
+**Also let it act as an agent here** (or the **Agent** switch on an existing
+connection) gives commands that arrive through it an agent sign-in, so the
+other Möbius's agent can run `mapi` against this instance — for example to
+drive an update end to end. It is an agent, never the owner: it cannot answer
+approval, restart, or question cards. Turning the switch off, or revoking the
+connection, ends it immediately; it survives restarts until then.
+
 ## Agent command helper
 
 `mach` keeps a simple remote command short, passes a working directory as

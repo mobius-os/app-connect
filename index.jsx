@@ -63,6 +63,11 @@ const CSS = `
   .cn-command-input { min-height: 76px; resize: vertical; padding-top: 11px; padding-bottom: 9px; font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; }
   .cn-form-footer { display: flex; align-items: center; justify-content: space-between; gap: 18px; margin-top: 13px; }
   .cn-share-warning { margin: 0; color: var(--muted); font-size: 11.5px; line-height: 1.4; }
+  .cn-agent-choice { display: flex; align-items: flex-start; gap: 9px; margin-top: 13px; font-size: 13px; line-height: 1.4; cursor: pointer; }
+  .cn-agent-choice input, .cn-agent-toggle input { width: 16px; height: 16px; margin: 2px 0 0; accent-color: var(--cn-violet); flex: none; }
+  .cn-agent-choice small { display: block; color: var(--muted); font-size: 11.5px; }
+  .cn-agent-toggle { display: inline-flex; align-items: center; gap: 6px; flex: none; color: var(--muted); font-size: 12px; cursor: pointer; }
+  .cn-agent-toggle input { margin: 0; }
 
   .cn-message { margin: 0 0 16px; padding: 12px 14px; border-radius: 12px; font-size: 13px; line-height: 1.45; }
   .cn-error { color: #ffb7ba; background: color-mix(in srgb, #e5484d 12%, var(--surface)); border: 1px solid color-mix(in srgb, #e5484d 34%, var(--border)); }
@@ -370,8 +375,8 @@ function DisconnectPanel({
 }
 
 function OutboundAccess({
-  connections, open, label, command, granting, confirmingId, revokingId,
-  onOpen, onCancel, onLabel, onCommand, onGrant, onConfirm, onKeep, onRevoke,
+  connections, open, label, command, agent, agentSupported, granting, confirmingId, revokingId, agentBusyId,
+  onOpen, onCancel, onLabel, onCommand, onAgent, onGrant, onConfirm, onKeep, onRevoke, onToggleAgent,
 }) {
   return <section className="cn-section" aria-labelledby="cn-access-title">
     <div className="cn-section-head">
@@ -409,6 +414,12 @@ function OutboundAccess({
           />
         </label>
       </div>
+      {agentSupported ? <label className="cn-agent-choice">
+        <input type="checkbox" checked={agent} onChange={event => onAgent(event.target.checked)}/>
+        <span>Also let it act as an agent here
+          <small>It can use this Möbius the way your chats’ agent does, but can’t answer your approvals.</small>
+        </span>
+      </label> : null}
       <div className="cn-form-footer">
         <p className="cn-share-warning">Full command access until you revoke it.</p>
         <button className="cn-btn" onClick={onGrant} disabled={granting || !label.trim() || !command.trim()}>
@@ -433,6 +444,14 @@ function OutboundAccess({
             </div>
             <span className="cn-outbound-meta">{connection.target}</span>
           </div>
+          {agentSupported && connection.status === 'active' ? <label className="cn-agent-toggle">
+            <input
+              type="checkbox"
+              checked={connection.agent}
+              disabled={agentBusyId === connection.id}
+              onChange={event => onToggleAgent(connection, event.target.checked)}
+            />Agent
+          </label> : null}
           <ActionConfirm
             id={`cn-revoke-${connection.id}`}
             open={confirming}
@@ -709,6 +728,9 @@ export default function App({ appId, token }) {
   const [accessCommand, setAccessCommand] = useState('')
   const [sharingOpen, setSharingOpen] = useState(false)
   const [grantingAccess, setGrantingAccess] = useState(false)
+  const [accessAgent, setAccessAgent] = useState(false)
+  const [agentBusyId, setAgentBusyId] = useState(null)
+  const [agentSupported, setAgentSupported] = useState(false)
   const [outboundConfirmId, setOutboundConfirmId] = useState(null)
   const [revokingOutboundId, setRevokingOutboundId] = useState(null)
   const [error, setError] = useState(null)
@@ -732,6 +754,7 @@ export default function App({ appId, token }) {
     setOutboundActive(shared.ready)
     setHosts(machines.items)
     setOutbound(shared.items)
+    setAgentSupported(shared.data?.agent_access === true)
     const notices = [machines.notice, shared.notice].filter(Boolean)
     setLoadNotices(notices)
     for (const notice of notices) {
@@ -999,13 +1022,14 @@ export default function App({ appId, token }) {
       const response = await fetch('/api/connect/outbound', {
         method: 'POST',
         headers: headers({ 'Content-Type': 'application/json' }),
-        body: JSON.stringify({ label, command }),
+        body: JSON.stringify({ label, command, agent: accessAgent }),
       })
       if (!response.ok) {
         throw new Error(await responseError(response, 'Couldn’t grant access.'))
       }
       setAccessLabel('')
       setAccessCommand('')
+      setAccessAgent(false)
       setSharingOpen(false)
       window.mobius.signal('item_created', { type: 'outbound_access' })
       await load()
@@ -1014,7 +1038,28 @@ export default function App({ appId, token }) {
     } finally {
       setGrantingAccess(false)
     }
-  }, [accessCommand, accessLabel, grantingAccess, headers, load])
+  }, [accessAgent, accessCommand, accessLabel, grantingAccess, headers, load])
+
+  const setOutboundAgent = useCallback(async (connection, agent) => {
+    if (agentBusyId) return
+    setAgentBusyId(connection.id)
+    setError(null)
+    try {
+      const response = await fetch(`/api/connect/outbound/${connection.id}`, {
+        method: 'PATCH',
+        headers: headers({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({ agent }),
+      })
+      if (!response.ok) {
+        throw new Error(await responseError(response, 'Couldn’t change agent access.'))
+      }
+      await load()
+    } catch (cause) {
+      setError(cause.message || 'Couldn’t change agent access.')
+    } finally {
+      setAgentBusyId(null)
+    }
+  }, [agentBusyId, headers, load])
 
   const revokeOutboundAccess = useCallback(async (connection) => {
     if (revokingOutboundId) return
@@ -1183,6 +1228,9 @@ export default function App({ appId, token }) {
         label={accessLabel}
         command={accessCommand}
         granting={grantingAccess}
+        agent={accessAgent}
+        agentSupported={agentSupported}
+        agentBusyId={agentBusyId}
         confirmingId={outboundConfirmId}
         revokingId={revokingOutboundId}
         onOpen={() => setSharingOpen(true)}
@@ -1190,9 +1238,12 @@ export default function App({ appId, token }) {
           setSharingOpen(false)
           setAccessLabel('')
           setAccessCommand('')
+          setAccessAgent(false)
         }}
         onLabel={setAccessLabel}
         onCommand={setAccessCommand}
+        onAgent={setAccessAgent}
+        onToggleAgent={setOutboundAgent}
         onGrant={grantOutboundAccess}
         onConfirm={id => {
           setRemoveConfirmingId(null)

@@ -28,7 +28,7 @@ export async function loadConnectionList(url, field, label, headers) {
     }
     const data = await response.json()
     if (!Array.isArray(data?.[field])) throw new Error('Möbius returned an unexpected response. Ask its agent to check the service.')
-    return { ready: true, items: data[field], notice: null }
+    return { ready: true, items: data[field], notice: null, data }
   } catch (cause) {
     return { ready: false, items: [], notice: {
       title: `Couldn’t load ${label.toLowerCase()}`,

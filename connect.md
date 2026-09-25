@@ -79,6 +79,11 @@ forwarding owner authorization to another destination.
   Before re-running work you stopped, confirm with `--commands` that it is no
   longer running.
 
+- When another Möbius granted this one access with **Also let it act as an
+  agent here**, commands on that machine already carry its agent sign-in:
+  `"$mach" -m "Their Möbius" 'mapi /api/platform/status'` calls *that* instance's API as its
+  agent. It is never the owner there, so owner cards still need that owner.
+
 For sustained work made up of many remote commands, prefer a coding agent
 running directly on that machine rather than turning `mach` into a high-latency
 interactive shell.

@@ -50,6 +50,7 @@ test('network failure in one direction does not reject the successful direction'
   assert.equal(machines.ready, false)
   assert.equal(shared.ready, true)
   assert.equal(shared.notice, null)
+  assert.deepEqual(shared.data, { connections: [] })
 })
 
 test('malformed success data is an error, not an empty saved list', async t => {
@@ -72,6 +73,6 @@ test('a successful refresh clears a previous service failure', async t => {
   assert.equal((await loadConnectionList('/api/connect/hosts', 'hosts', 'Connect', {})).ready, false)
   ready = true
   assert.deepEqual(await loadConnectionList('/api/connect/hosts', 'hosts', 'Connect', {}), {
-    ready: true, items: [], notice: null,
+    ready: true, items: [], notice: null, data: { hosts: [] },
   })
 })

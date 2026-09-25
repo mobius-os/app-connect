@@ -110,3 +110,11 @@ test('live output polling never overlaps and only targets platforms with the rou
   assert.match(source, /\.filter\(host => Array\.isArray\(host\.active_commands\)\)/)
   assert.doesNotMatch(source, /busy_source/)
 })
+
+test('agent access is offered only where the platform supports it', () => {
+  assert.match(source, /setAgentSupported\(shared\.data\?\.agent_access === true\)/)
+  assert.match(source, /\{agentSupported \? <label className="cn-agent-choice">/)
+  assert.match(source, /\{agentSupported && connection\.status === 'active' \? <label className="cn-agent-toggle">/)
+  assert.match(source, /JSON\.stringify\(\{ label, command, agent: accessAgent \}\)/)
+  assert.match(source, /method: 'PATCH',[\s\S]*JSON\.stringify\(\{ agent \}\)/)
+})

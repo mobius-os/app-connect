@@ -31,6 +31,19 @@ test('new machines start with an editable default name and restore it after crea
   assert.match(source, /setNewName\(DEFAULT_MACHINE_NAME\)/)
 })
 
+test('renaming uses the standard edit icon instead of making the name clickable', () => {
+  assert.match(source, /import \{[^}]*Pencil[^}]*\} from '@openai\/apps-sdk-ui\/components\/Icon'/)
+  assert.match(source, /<span className="cn-host-name">\{host\.name\}<\/span>/)
+  assert.match(source, /className="cn-host-edit"[\s\S]*aria-label=\{`Rename \$\{host\.name\}`\}[\s\S]*<Pencil size=\{15\}/)
+  assert.doesNotMatch(source, /cn-host-namebtn/)
+})
+
+test('rename keeps validation and in-flight controls inside the row', () => {
+  assert.match(source, /if \(!name\) \{[\s\S]*setRenameError\('Enter a machine name\.'\)/)
+  assert.match(source, /event\.key === 'Escape' && !saving/)
+  assert.match(source, /className="cn-rename-error"[\s\S]*role="alert"/)
+})
+
 test('the two connection directions are the permanent page structure', () => {
   const render = source.slice(source.indexOf('export default function App'))
   const controlled = render.indexOf('Machines you control')

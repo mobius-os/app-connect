@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { Check, Copy, Desktop, Plus } from '@openai/apps-sdk-ui/components/Icon'
+import { Check, Copy, Desktop, Pencil, Plus } from '@openai/apps-sdk-ui/components/Icon'
 import {
   activeCommands,
   appendTail,
@@ -49,7 +49,7 @@ const CSS = `
   .cn-btn:hover:not(:disabled) { background: color-mix(in srgb, var(--cn-violet) 88%, white); }
   .cn-btn:active:not(:disabled) { transform: scale(.98); }
   .cn-btn:disabled { opacity: .48; cursor: default; }
-  .cn-btn:focus-visible, .cn-host-namebtn:focus-visible, .cn-host-toggle:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
+  .cn-btn:focus-visible, .cn-host-edit:focus-visible, .cn-host-toggle:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
   .cn-btn-ghost { color: var(--text); background: transparent; border-color: var(--border); }
   .cn-btn-ghost:hover:not(:disabled) { background: var(--surface-2); }
   .cn-btn-danger { color: #fff; background: #c9363e; }
@@ -92,9 +92,11 @@ const CSS = `
   .cn-host-body, .cn-outbound-copy { position: relative; z-index: 1; grid-column: 2; grid-row: 1; min-width: 0; }
   .cn-host-body { pointer-events: none; }
   .cn-host-body button, .cn-host-body input { pointer-events: auto; }
-  .cn-host-top { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
-  .cn-host-namebtn { pointer-events: auto; max-width: min(100%, 44ch); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin: -4px; padding: 4px; border: 0; border-radius: 6px; color: var(--text); background: transparent; font: 650 14px var(--font); text-align: left; cursor: text; }
-  .cn-host-namebtn:hover { background: var(--surface-2); }
+  .cn-host-top { display: flex; align-items: center; min-width: 0; gap: 8px; }
+  .cn-host-name { max-width: min(100%, 44ch); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); font-size: 14px; font-weight: 650; }
+  .cn-host-edit { pointer-events: auto; flex: none; width: 44px; height: 44px; display: inline-grid; place-items: center; margin: -12px -8px; padding: 0; border: 0; border-radius: 9px; color: var(--muted); background: transparent; cursor: pointer; }
+  .cn-host-edit:hover:not(:disabled) { color: var(--text); background: var(--surface-2); }
+  .cn-host-edit:disabled { opacity: .48; cursor: default; }
   .cn-outbound-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); font-size: 14px; font-weight: 650; }
   .cn-host-meta, .cn-outbound-meta { display: block; margin-top: 4px; color: var(--muted); font-size: 11.5px; }
   .cn-pill { display: inline-flex; align-items: center; gap: 5px; padding: 3px 7px; border-radius: 999px; color: var(--muted); background: var(--surface-2); font-size: 10.5px; font-weight: 680; }
@@ -145,9 +147,10 @@ const CSS = `
   .cn-copybtn { min-width: 120px; }
   .cn-copybtn.is-copied { color: #36b999; border-color: color-mix(in srgb, var(--cn-mint) 35%, var(--border)); background: color-mix(in srgb, var(--cn-mint) 9%, var(--surface)); }
 
-  .cn-rename { pointer-events: auto; display: flex; align-items: center; gap: 8px; width: 100%; }
+  .cn-rename { pointer-events: auto; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; width: 100%; }
   .cn-rename .cn-input { height: 40px; flex: 1; min-width: 0; }
   .cn-rename-actions { display: flex; gap: 8px; flex: none; }
+  .cn-rename-error { flex-basis: 100%; margin: 0; color: #ffb7ba; font-size: 11.5px; line-height: 1.35; }
 
   @keyframes cn-pulse { from { transform: scale(.7); opacity: .72; } to { transform: scale(1.9); opacity: 0; } }
   @media (prefers-reduced-motion: reduce) { .cn-pill-dot::after { animation: none !important; } .cn-btn, .cn-toggle-mark, .cn-agent-toggle { transition: none; } }
@@ -598,7 +601,7 @@ function UpdatePanel({
 }
 
 function MachineRow({
-  host, confirming, deleting, removeConfirming, renaming, renameValue, saving,
+  host, confirming, deleting, removeConfirming, renaming, renameValue, renameError, saving,
   copiedKey, failedKey, onCopy, onConfirm, onPair, onRemove, onSelect,
   onRenameStart, onRenameChange, onRenameSave, onRenameCancel,
   tails, stopConfirmingId, stoppingId, onStopConfirm, onStopKeep, onStop,
@@ -616,7 +619,7 @@ function MachineRow({
     <button
       className="cn-host-toggle"
       onClick={onConfirm}
-      disabled={host.busy}
+      disabled={host.busy || renaming}
       aria-expanded={confirming}
       aria-label={`${confirming ? 'Hide' : 'Show'} details for ${host.name}`}
     />
@@ -631,10 +634,16 @@ function MachineRow({
           maxLength={80}
           autoFocus
           aria-label={`Rename ${host.name}`}
+          aria-invalid={Boolean(renameError)}
+          aria-describedby={renameError ? `rename-error-${host.id}` : undefined}
           onChange={event => onRenameChange(event.target.value)}
           onKeyDown={event => {
-            if (event.key === 'Enter') onRenameSave()
-            else if (event.key === 'Escape') onRenameCancel()
+            if (event.key === 'Enter') {
+              event.preventDefault()
+              if (!saving) onRenameSave()
+            } else if (event.key === 'Escape' && !saving) {
+              onRenameCancel()
+            }
           }}
         />
         <div className="cn-rename-actions">
@@ -645,10 +654,20 @@ function MachineRow({
             {saving ? 'Saving…' : 'Save'}
           </button>
         </div>
+        {renameError ? <p className="cn-rename-error" id={`rename-error-${host.id}`} role="alert">
+          {renameError}
+        </p> : null}
       </div> : <>
         <div className="cn-host-top">
-          <button className="cn-host-namebtn" onClick={onRenameStart} title="Rename machine">
-            {host.name}
+          <span className="cn-host-name">{host.name}</span>
+          <button
+            type="button"
+            className="cn-host-edit"
+            onClick={onRenameStart}
+            aria-label={`Rename ${host.name}`}
+            title="Rename machine"
+          >
+            <Pencil size={15} aria-hidden="true"/>
           </button>
           <span className={`cn-pill ${status.cls}`} role="status">
             <span className="cn-pill-dot" aria-hidden="true"/>{status.label}
@@ -723,6 +742,7 @@ export default function App({ appId, token }) {
   const [removeConfirmingId, setRemoveConfirmingId] = useState(null)
   const [renamingId, setRenamingId] = useState(null)
   const [renameValue, setRenameValue] = useState('')
+  const [renameError, setRenameError] = useState(null)
   const [savingId, setSavingId] = useState(null)
   const [creating, setCreating] = useState(false)
   const [deletingId, setDeletingId] = useState(null)
@@ -932,17 +952,30 @@ export default function App({ appId, token }) {
 
   const startRename = useCallback((host) => {
     setRenameValue(host.name)
+    setRenameError(null)
     setRenamingId(host.id)
   }, [])
 
+  const cancelRename = useCallback(() => {
+    if (savingId) return
+    setRenameError(null)
+    setRenamingId(null)
+  }, [savingId])
+
   const saveRename = useCallback(async (host) => {
     const name = renameValue.trim()
-    if (!name || name === host.name) {
+    if (!name) {
+      setRenameError('Enter a machine name.')
+      return
+    }
+    if (name === host.name) {
+      setRenameError(null)
       setRenamingId(null)
       return
     }
     if (savingId) return
     setSavingId(host.id)
+    setRenameError(null)
     setError(null)
     try {
       const response = await fetch(`/api/connect/hosts/${host.id}`, {
@@ -959,7 +992,7 @@ export default function App({ appId, token }) {
       )))
       setRenamingId(null)
     } catch (cause) {
-      setError(cause.message || 'Couldn’t rename this machine.')
+      setRenameError(cause.message || 'Couldn’t rename this machine.')
     } finally {
       setSavingId(null)
     }
@@ -1171,6 +1204,7 @@ export default function App({ appId, token }) {
             removeConfirming={removeConfirmingId === host.id}
             renaming={renamingId === host.id}
             renameValue={renameValue}
+            renameError={renamingId === host.id ? renameError : null}
             saving={savingId === host.id}
             tails={tails}
             stopConfirmingId={stopConfirmingId}
@@ -1202,9 +1236,12 @@ export default function App({ appId, token }) {
               setConfirmingId(null)
               startRename(host)
             }}
-            onRenameChange={setRenameValue}
+            onRenameChange={value => {
+              setRenameError(null)
+              setRenameValue(value)
+            }}
             onRenameSave={() => saveRename(host)}
-            onRenameCancel={() => setRenamingId(null)}
+            onRenameCancel={cancelRename}
             onStopConfirm={command => {
               setRemoveConfirmingId(null)
               setOutboundConfirmId(null)

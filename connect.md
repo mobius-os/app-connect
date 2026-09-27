@@ -7,16 +7,16 @@ description: "Run work on a laptop, workstation, server, or cluster paired throu
 
 Local shell calls run inside Möbius. Use `/data/apps/connect/mach` for a machine
 paired through Connect; it sends one self-contained command and returns the
-remote output and exit status.
+remote output and exit status. Call it by that full path every time: shell
+variables do not carry over between commands.
 
 ## The three useful forms
 
 ```bash
-mach=/data/apps/connect/mach
-"$mach" --list
-"$mach" -m "My machine" 'uname -a'
-"$mach" -m "My machine" -C /srv/app 'git status --short'
-"$mach" -m "My machine" -- '--command-that-looks-like-a-mach-option'
+/data/apps/connect/mach --list
+/data/apps/connect/mach -m "My machine" 'uname -a'
+/data/apps/connect/mach -m "My machine" -C /srv/app 'git status --short'
+/data/apps/connect/mach -m "My machine" -- '--command-that-looks-like-a-mach-option'
 ```
 
 Keep only genuinely simple commands inline. For loops, JSON, templates, nested
@@ -24,7 +24,7 @@ quotes, substitutions, or several steps, use a literal script from the first
 attempt:
 
 ```bash
-"$mach" -m "My machine" -C /srv/app --script --shell bash <<'MACH'
+/data/apps/connect/mach -m "My machine" -C /srv/app --script --shell bash <<'MACH'
 set -euo pipefail
 docker compose ps --format json
 for file in config/*.json; do
@@ -61,8 +61,8 @@ forwarding owner authorization to another destination.
   than a quick inspection — builds, deploys, installs, downloads, test suites —
   pass a generous `-t` up front; a killed build is not a partial success.
 - Output streams while the command runs. If your tool kills `mach` before the
-  command finishes, the command keeps running: `"$mach" -m <machine>
-  --commands` lists running ids and `"$mach" -m <machine> --attach <id>`
+  command finishes, the command keeps running: `/data/apps/connect/mach -m <machine>
+  --commands` lists running ids and `/data/apps/connect/mach -m <machine> --attach <id>`
   resumes with its latest output and exit status. Attach instead of starting
   the work again. For work longer than your tool-call limit, expect to attach.
 - A machine with a current runner runs several commands at once, so you can
@@ -81,7 +81,7 @@ forwarding owner authorization to another destination.
 
 - When another Möbius granted this one access with **Full access**, commands
   on that machine already carry its agent sign-in:
-  `"$mach" -m "Their Möbius" 'mapi /api/platform/status'` calls *that* instance's API as its
+  `/data/apps/connect/mach -m "Their Möbius" 'mapi /api/platform/status'` calls *that* instance's API as its
   agent. It is never the owner there, so owner cards still need that owner.
 
 For sustained work made up of many remote commands, prefer a coding agent

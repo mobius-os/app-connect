@@ -7,6 +7,7 @@ import {
   cancelCommandPath,
   commandCapabilities,
   disconnectPresentation,
+  outputPage,
   outputPath,
   statusOf,
 } from './connect-state.mjs'
@@ -58,6 +59,22 @@ test('the live tail keeps only the latest lines across chunk boundaries', () => 
   tail = appendTail(tail, [{ text: '2\nstep 3\n' }, { text: 'step 4\n' }], 3)
   assert.equal(tail, 'step 2\nstep 3\nstep 4\n')
   assert.equal(appendTail(tail, [], 3), tail)
+})
+
+test('finished output pages preserve server cursor and do not accumulate old text', () => {
+  const first = outputPage({
+    chunks: [{ seq: 0, text: 'first' }, { seq: 2, text: ' page' }],
+    next: 3, has_more: true, output_complete: true,
+  }, 0)
+  assert.deepEqual(first, { text: 'first page', next: 3, hasMore: true, complete: true, preview: '' })
+  assert.deepEqual(outputPage({
+    chunks: [{ seq: 3, text: 'second' }], next: 4,
+    has_more: false, output_complete: false,
+  }, first.next), { text: 'second', next: 4, hasMore: false, complete: false, preview: '' })
+  assert.equal(outputPage({ chunks: [], next: 0, has_more: false,
+    result: { stdout: 'preview', stderr: 'only' } }, 0).preview, 'preview\nonly')
+  assert.throws(() => outputPage({ chunks: [], next: 3, has_more: true }, 3), /advance/)
+  assert.throws(() => outputPage({ chunks: [], next: '3', has_more: false }, 0), /invalid/)
 })
 
 test('online disconnect makes the button primary and explains the local fallback', () => {

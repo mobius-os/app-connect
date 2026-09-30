@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { loadConnectionList } from './connect-api.mjs'
+import { loadConnectionList, responseErrorData } from './connect-api.mjs'
 
 for (const status of [404, 501]) {
   test(`HTTP ${status} explains missing platform support without promising a restart`, async t => {
@@ -73,6 +73,26 @@ test('a successful refresh clears a previous service failure', async t => {
   assert.equal((await loadConnectionList('/api/connect/hosts', 'hosts', 'Connect', {})).ready, false)
   ready = true
   assert.deepEqual(await loadConnectionList('/api/connect/hosts', 'hosts', 'Connect', {}), {
-    ready: true, items: [], notice: null, data: { hosts: [] },
+    ready: true, transient: false, items: [], notice: null, data: { hosts: [] },
   })
+})
+
+test('temporary failure is marked transient for keeping a prior snapshot', async t => {
+  t.mock.method(globalThis, 'fetch', async () => { throw new TypeError('Failed to fetch') })
+  const result = await loadConnectionList('/api/connect/hosts', 'hosts', 'Connect', {})
+  assert.equal(result.ready, false)
+  assert.equal(result.transient, true)
+})
+
+test('unsupported and malformed responses must not preserve a stale snapshot', async t => {
+  t.mock.method(globalThis, 'fetch', async () => new Response('', { status: 404 }))
+  assert.equal((await loadConnectionList('/api/connect/hosts', 'hosts', 'Connect', {})).transient, false)
+  t.mock.restoreAll()
+  t.mock.method(globalThis, 'fetch', async () => Response.json({ wrong: [] }))
+  assert.equal((await loadConnectionList('/api/connect/hosts', 'hosts', 'Connect', {})).transient, false)
+})
+
+test('typed error parser preserves detail and code without guessing from copy', async () => {
+  const response = Response.json({ detail: 'Busy', code: 'host_busy' }, { status: 409 })
+  assert.deepEqual(await responseErrorData(response, 'Fallback'), { detail: 'Busy', code: 'host_busy' })
 })

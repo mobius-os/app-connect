@@ -15,6 +15,7 @@ Usage:
   mach -m <machine> -t <seconds> '<command>'    set the time limit (default 60, up to a year)
   mach -m <machine> --commands                  list running and recently finished commands
   mach -m <machine> --attach <id>               follow a command's output until it ends
+  mach -m <machine> --output <id>               replay all retained output, then follow if active
   mach --list                                   list paired machines (name, status, id)
 
   <machine> matches a machine's name (case-insensitive substring) or its host id
@@ -41,6 +42,10 @@ Usage:
   and `--attach <id>` resumes with its latest output. Ctrl-C (SIGINT) stops
   the command; Ctrl-C while attached only stops following it.
 
+  --output replays retained stdout/stderr text from the beginning (paginating
+  until complete), then follows an active command. It does not promise raw
+  binary-byte preservation; the Connect protocol carries text.
+
 Reads AGENT_TOKEN and API_BASE_URL from the environment.
 
 Authenticated API calls connect directly to API_BASE_URL, ignore proxy
@@ -50,6 +55,7 @@ to a different destination.
 from __future__ import annotations
 
 import json
+import http.client
 import ntpath
 import os
 import posixpath
@@ -61,7 +67,10 @@ import urllib.error
 import urllib.request
 
 
-_MAX_COMMAND_CHARS = 64 * 1024
+# Match the platform's HTTP body guard (backend/app/main.py), not an OS
+# command-line limit: literal scripts travel as data and run through stdin.
+_MAX_REQUEST_BODY_BYTES = 64 * 1024 * 1024
+_REQUEST_TOO_LARGE = "mach: request exceeds Möbius's 64 MiB HTTP body limit."
 # Windows runners launch commands through cmd.exe, whose 8,191-character limit
 # also includes its own wrapper text. Keep a small margin for that wrapper.
 _MAX_WINDOWS_COMMAND_CHARS = 8_000
@@ -80,6 +89,7 @@ _RESULT_GRACE_SECONDS = 75
 # Möbius rejects longer limits as invalid; a year is not a working limit.
 _MAX_TIMEOUT = 365 * 24 * 60 * 60
 _REQUEST_ID_RE = re.compile(r"[a-f0-9]{16,64}")
+_ADMISSION_SECONDS = 10
 _REDIRECT_CODES = frozenset((301, 302, 303, 307, 308))
 
 
@@ -121,15 +131,23 @@ def _call(
     token = os.environ.get("AGENT_TOKEN")
     if not base or not token:
         _fail("mach: API_BASE_URL / AGENT_TOKEN not set in this environment.")
+    data = json.dumps(payload, ensure_ascii=False).encode("utf-8") if payload is not None else None
+    if data is not None and len(data) > _MAX_REQUEST_BODY_BYTES:
+        _fail(_REQUEST_TOO_LARGE)
     req = urllib.request.Request(
         base.rstrip("/") + path,
-        data=json.dumps(payload).encode() if payload is not None else None,
+        data=data,
         method=method,
     )
     req.add_header("Authorization", "Bearer " + token)
     if payload is not None:
         req.add_header("Content-Type", "application/json")
     delay = 1
+    request_id = payload.get("request_id") if isinstance(payload, dict) and method == "POST" else None
+    recovery = (
+        f" Command {request_id} may already be running; check --commands or "
+        f"resume with --attach {request_id}." if request_id else ""
+    )
     while True:
         try:
             request_timeout = _DEFAULT_HTTP_TIMEOUT
@@ -145,9 +163,9 @@ def _call(
                 try:
                     result = json.loads(resp.read().decode())
                 except (UnicodeError, ValueError):
-                    _fail("mach: Möbius returned an invalid response.", 2)
+                    _fail("mach: Möbius returned an invalid response." + recovery, 2)
                 if not isinstance(result, dict):
-                    _fail("mach: Möbius returned an invalid response.", 2)
+                    _fail("mach: Möbius returned an invalid response." + recovery, 2)
                 return result
         except urllib.error.HTTPError as exc:
             if exc.code in _REDIRECT_CODES:
@@ -158,7 +176,17 @@ def _call(
                     2,
                 )
             try:
-                detail = exc.read().decode(errors="replace")
+                detail = exc.read(2048).decode(errors="replace")
+            except (urllib.error.URLError, http.client.IncompleteRead,
+                    ConnectionError, TimeoutError) as read_exc:
+                next_delay = _wait_to_retry(retry_until, delay)
+                if next_delay is not None:
+                    delay = next_delay
+                    continue
+                _fail(
+                    f"mach: could not complete Möbius error response "
+                    f"({str(read_exc)[:200]}).{recovery}", 2,
+                )
             finally:
                 exc.close()
             if exc.code in (502, 503):
@@ -180,8 +208,9 @@ def _call(
                 pass
             if not str(detail).strip():
                 detail = f"Möbius returned HTTP {exc.code} ({exc.reason})."
-            _fail(f"mach: {detail}", 2)
-        except (urllib.error.URLError, TimeoutError) as exc:
+            _fail(f"mach: {str(detail)[:500]}{recovery}", 2)
+        except (urllib.error.URLError, TimeoutError, ConnectionError,
+                http.client.IncompleteRead, http.client.RemoteDisconnected) as exc:
             next_delay = _wait_to_retry(retry_until, delay)
             if next_delay is not None:
                 delay = next_delay
@@ -191,7 +220,7 @@ def _call(
                 if isinstance(exc, urllib.error.URLError)
                 else "request timed out"
             )
-            _fail(f"mach: could not reach Möbius ({reason}).", 2)
+            _fail(f"mach: could not complete Möbius response ({str(reason)[:200]}).{recovery}", 2)
 
 
 def _hosts():
@@ -291,16 +320,21 @@ def _selected_script_shell(
 
 
 def _read_script() -> str:
-    script = sys.stdin.read(_MAX_COMMAND_CHARS + 1)
+    # Read in bounded chunks, counting UTF-8 bytes rather than characters.
+    # Stop oversized or endless input before constructing the JSON request;
+    # _call also checks its final size, including escaping and metadata.
+    chunks = []
+    size = 0
+    while chunk := sys.stdin.read(min(64 * 1024, _MAX_REQUEST_BODY_BYTES - size + 1)):
+        size += len(chunk.encode("utf-8"))
+        if size > _MAX_REQUEST_BODY_BYTES:
+            _fail(_REQUEST_TOO_LARGE)
+        chunks.append(chunk)
+    script = "".join(chunks)
     if not script.strip():
         _fail("mach: --script received no script on stdin.")
     if "\x00" in script:
         _fail("mach: a script cannot contain a NUL byte.")
-    if len(script) > _MAX_COMMAND_CHARS:
-        _fail(
-            "mach: the remote work is larger than 64 KiB; split the work "
-            "or place a script in the project first."
-        )
     return script
 
 
@@ -312,6 +346,7 @@ def main(argv) -> int:
     shell = None
     list_commands = False
     attach_id = None
+    output_id = None
     cmd_parts: list[str] = []
     it = iter(argv)
     for tok in it:
@@ -349,6 +384,10 @@ def main(argv) -> int:
             attach_id = next(it, None)
             if not attach_id or not _REQUEST_ID_RE.fullmatch(attach_id):
                 _fail("mach: --attach needs a command id from `--commands`.")
+        elif tok == "--output":
+            output_id = next(it, None)
+            if not output_id or not _REQUEST_ID_RE.fullmatch(output_id):
+                _fail("mach: --output needs a command id from `--commands`.")
         elif tok in ("-h", "--help"):
             print(__doc__)
             return 0
@@ -359,13 +398,13 @@ def main(argv) -> int:
     if machine is None:
         _fail("mach: name a machine with -m <machine>. Paired machines:\n"
               + _format(_hosts()))
-    if list_commands or attach_id is not None:
-        if cmd_parts or script_mode or (list_commands and attach_id is not None):
-            _fail("mach: --commands and --attach take no command to run.")
+    if list_commands or attach_id is not None or output_id is not None:
+        if cmd_parts or script_mode or sum((list_commands, attach_id is not None, output_id is not None)) != 1:
+            _fail("mach: --commands, --attach and --output take no command to run.")
         host = _resolve_host(machine)
         if list_commands:
             return _print_commands(host)
-        return _follow(host, attach_id, attached=True)
+        return _follow(host, attach_id or output_id, attached=attach_id is not None)
     if script_mode and cmd_parts:
         _fail("mach: --script reads stdin; do not also provide an inline command.")
     if shell is not None and not script_mode:
@@ -397,17 +436,15 @@ def main(argv) -> int:
         and _windows_command_units(command) > _MAX_WINDOWS_COMMAND_CHARS
     ):
         _fail(
-            "mach: the remote command is too large for the Windows shell; "
-            "split the work or place a script in the project first."
-        )
-    if command is not None and len(command) > _MAX_COMMAND_CHARS:
-        _fail(
-            "mach: the remote work is larger than 64 KiB; split the work "
-            "or place a script in the project first."
+            "mach: the remote command exceeds the Windows cmd.exe limit "
+            "(counted in UTF-16 units); use --script for long text."
         )
 
     request_id = secrets.token_hex(8)
-    payload = {"timeout": timeout, "request_id": request_id, "stream": True}
+    # Admission is distinct from execution: never refresh it when retrying a
+    # POST whose response was lost. Known requests can still be rejoined.
+    payload = {"timeout": timeout, "request_id": request_id, "stream": True,
+               "admission_deadline": time.time() + _ADMISSION_SECONDS}
     if script_mode:
         # The current runner carries the exact script as data. It never becomes
         # a local or remote command-line argument, avoiding quoting and OS limits.
@@ -472,9 +509,14 @@ def _print_result(res, request_id: str, *, bodies: bool = True) -> int:
         sys.stderr.write(stderr)
         if truncated:
             sys.stderr.write("\nmach: output was truncated by Möbius.\n")
-    if exit_code and not (stdout or stderr):
+    if bodies and exit_code and not (stdout or stderr):
         sys.stderr.write(
             f"mach: remote command exited {exit_code} without producing output.\n"
+        )
+    if res.get("output_error"):
+        sys.stderr.write(
+            "\nmach: command output is incomplete: "
+            + str(res["output_error"]) + "\n"
         )
     return exit_code
 
@@ -482,11 +524,15 @@ def _print_result(res, request_id: str, *, bodies: bool = True) -> int:
 def _output_view(view, request_id: str):
     chunks = view.get("chunks")
     next_seq = view.get("next")
+    available_next = view.get("available_next", next_seq)
     if (
         view.get("request_id") != request_id
         or not isinstance(chunks, list)
         or isinstance(next_seq, bool)
         or not isinstance(next_seq, int)
+        or (available_next is not None and (
+            isinstance(available_next, bool) or not isinstance(available_next, int)
+        ))
         or any(
             not isinstance(chunk, dict)
             or chunk.get("stream") not in ("stdout", "stderr")
@@ -497,7 +543,7 @@ def _output_view(view, request_id: str):
         )
     ):
         _fail("mach: Möbius returned an invalid output response.", 2)
-    return chunks, next_seq
+    return chunks, next_seq, available_next
 
 
 def _latest(chunks: list) -> list:
@@ -535,7 +581,8 @@ def _follow(
                 f"{base}?after={cursor}&wait={_OUTPUT_WAIT_SECONDS}",
                 retry_until=time.monotonic() + _OUTPUT_RETRY_SECONDS,
             )
-            chunks, next_seq = _output_view(view, request_id)
+            chunks, next_seq, available_next = _output_view(view, request_id)
+            prior_cursor = cursor
             if backlog:
                 backlog = False
                 latest = _latest(chunks)
@@ -555,6 +602,12 @@ def _follow(
             cursor = max(cursor, next_seq)
             result = view.get("result")
             if isinstance(result, dict):
+                # The final result can arrive on the first of several output
+                # pages. Drain the retained log before reporting completion.
+                if available_next is not None and cursor < available_next:
+                    if cursor <= prior_cursor:
+                        _fail("mach: Möbius output pagination made no progress.", 2)
+                    continue
                 output_seq = view.get("output_seq")
                 if isinstance(output_seq, int) and cursor < output_seq:
                     missed = True

@@ -82,8 +82,25 @@ forwarding owner authorization to another destination.
 - When another Möbius granted this one access with **Full access**, commands
   on that machine already carry its agent sign-in:
   `/data/apps/connect/mach -m "Their Möbius" 'mapi /api/platform/status'` calls *that* instance's API as its
-  agent. It is never the owner there, so owner cards still need that owner.
+  agent. Full access is broad API authority, not a human browser login. Ordinary
+  cards an authenticated agent can read may be answered through their exact
+  current-card endpoint; sealed input and human-only actions keep their own rules.
 
 For sustained work made up of many remote commands, prefer a coding agent
 running directly on that machine rather than turning `mach` into a high-latency
 interactive shell.
+
+## Complete output and uncertain delivery
+
+Use `/data/apps/connect/mach -m "My machine" --output <id>` for retained full text;
+`--attach` intentionally begins with the latest portion. The server retains
+numbered output privately with finished request identity, independently of the
+short final preview. No automatic history deletion is enabled; intentional host
+removal also removes its output. Save needed output before disconnecting.
+
+Never rerun uncertain work under a new ID merely because a response was lost.
+Use `--commands`, `--attach`, or `--output` with the original ID first. The original
+admission deadline bounds retries; an unknown expired submission does not become
+fresh execution. Pending output survives network outages but not runner-process
+death; binary byte fidelity is not promised. An incomplete-output notice is not
+evidence that the command itself failed.

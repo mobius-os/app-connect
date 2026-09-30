@@ -44,6 +44,25 @@ export function outputPath(host, command, after) {
   return path ? `${path}?after=${after}` : null
 }
 
+// Keep only the current server-bounded page in the UI. A cursor advances by
+// sequence number, not by chunk count (gaps can exist in older output).
+export function outputPage(view, after) {
+  if (!Array.isArray(view?.chunks) || !Number.isSafeInteger(view.next)
+      || view.next < after || typeof view.has_more !== 'boolean') {
+    throw new Error('Connect returned an invalid output page.')
+  }
+  if (view.has_more && view.next <= after) {
+    throw new Error('Connect did not advance the output page. Try again later.')
+  }
+  return {
+    text: view.chunks.map(chunk => chunk.text || '').join(''),
+    next: view.next,
+    hasMore: view.has_more,
+    complete: view.output_complete === true,
+    preview: [view.result?.stdout, view.result?.stderr].filter(Boolean).join('\n'),
+  }
+}
+
 // Characters kept even when output has no line breaks.
 export const TAIL_CHARS = 4000
 

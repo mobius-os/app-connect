@@ -258,7 +258,7 @@ function CopyCommand({ command, copyKey, copiedKey, failedKey, onCopy, onSelect 
   </>
 }
 
-function PairingPanel({ pairing, copiedKey, failedKey, onCopy, onDone, onRefresh, onSelect }) {
+function PairingPanel({ pairing, copiedKey, failedKey, onCopy, onDone, onRefresh, onSelect, stale }) {
   const expires = pairing.expires_at ? new Date(pairing.expires_at * 1000).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : null
   return <section className="cn-pairing" aria-labelledby="cn-pair-title">
     <div className="cn-card-head">
@@ -280,7 +280,7 @@ function PairingPanel({ pairing, copiedKey, failedKey, onCopy, onDone, onRefresh
           onSelect={onSelect}
         />
         <div className="cn-hint">
-          Installs a background service that reconnects after reboot. {expires ? `Expires at ${expires}.` : 'This command expires after 15 minutes.'} <button className="cn-pair-refresh" onClick={onRefresh}>Refresh command</button>
+          Installs a background service that reconnects after reboot. {expires ? `Expires at ${expires}.` : 'This command expires after 15 minutes.'} <button className="cn-pair-refresh" onClick={onRefresh} disabled={stale}>Refresh command</button>
         </div>
       </div>
     </div>
@@ -528,7 +528,7 @@ function CommandPanel({ host, command, tail, confirming, stopping, stale, onConf
         onOpen={onConfirm}
         onCancel={onKeep}
         onConfirm={onStop}
-        disabled={stoppingNow}
+        disabled={stale || stoppingNow}
         confirming={stoppingNow}
         triggerClass="cn-btn cn-btn-danger cn-btn-sm"
         align="end"
@@ -539,7 +539,7 @@ function CommandPanel({ host, command, tail, confirming, stopping, stale, onConf
 }
 
 function FinishedOutput({ host, commands, headers }) {
-  const [selectedId, setSelectedId] = useState(commands[0].id)
+  const [selectedCommand, setSelectedCommand] = useState(commands[0])
   const [open, setOpen] = useState(false)
   const [cursor, setCursor] = useState(0)
   const [previous, setPrevious] = useState([])
@@ -548,7 +548,7 @@ function FinishedOutput({ host, commands, headers }) {
   const [unavailable, setUnavailable] = useState(false)
   const [loadError, setLoadError] = useState(null)
   const [retry, setRetry] = useState(0)
-  const command = commands.find(item => item.id === selectedId) || commands[0]
+  const command = commands.find(item => item.id === selectedCommand.id) || selectedCommand
 
   useEffect(() => {
     if (!open) return undefined
@@ -602,7 +602,7 @@ function FinishedOutput({ host, commands, headers }) {
         className={`cn-btn cn-btn-ghost cn-btn-sm${item.id === command.id ? ' is-selected' : ''}`}
         aria-pressed={item.id === command.id}
         onClick={() => {
-          setSelectedId(item.id)
+          setSelectedCommand(item)
           setCursor(0)
           setPrevious([])
         }}
@@ -634,7 +634,7 @@ function FinishedOutput({ host, commands, headers }) {
         {!page.complete && !page.hasMore ? <p className="cn-hint">The retained output may be incomplete.</p> : null}
         <div className="cn-page-actions">
           <button className="cn-btn cn-btn-ghost cn-btn-sm" onClick={back} disabled={!previous.length}>Previous page</button>
-          <span>Page {previous.length + 1}</span>
+          <span>Output page</span>
           <button className="cn-btn cn-btn-ghost cn-btn-sm" onClick={next} disabled={!page.hasMore}>Next page</button>
         </div>
       </> : null}
@@ -752,7 +752,7 @@ function MachineRow({
             onKeyDown={event => {
               if (event.key === 'Enter') {
                 event.preventDefault()
-                if (!saving) onRenameSave()
+                if (!saving && !stale) onRenameSave()
               } else if (event.key === 'Escape' && !saving) {
                 onRenameCancel()
               }
@@ -762,7 +762,7 @@ function MachineRow({
             <button className="cn-btn cn-btn-ghost cn-btn-sm" onClick={onRenameCancel} disabled={saving}>
               Cancel
             </button>
-            <button className="cn-btn cn-btn-sm" onClick={onRenameSave} disabled={saving}>
+            <button className="cn-btn cn-btn-sm" onClick={onRenameSave} disabled={saving || stale}>
               {saving ? 'Saving…' : 'Save'}
             </button>
           </div>
@@ -1324,6 +1324,7 @@ export default function App({ appId, token }) {
         </div> : null}
 
         {pairing ? <PairingPanel
+          stale={serviceStale}
           pairing={pairing}
           copiedKey={copiedKey}
           failedKey={failedKey}

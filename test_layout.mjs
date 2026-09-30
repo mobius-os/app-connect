@@ -181,3 +181,21 @@ test('expanded machines offer bounded recent-command output with one cursor read
   assert.match(source, /Result preview only/)
   assert.doesNotMatch(source, /host\.last_command/)
 })
+
+
+test('stale data disables stop, rename submission and pairing refresh without disabling local reading', () => {
+  const command = source.slice(source.indexOf('function CommandPanel('), source.indexOf('function FinishedOutput('))
+  assert.match(command, /disabled=\{stale \|\| stoppingNow\}/)
+  assert.match(source, /onClick=\{onRenameSave\} disabled=\{saving \|\| stale\}/)
+  assert.match(source, /if \(!saving && !stale\) onRenameSave\(\)/)
+  assert.match(source, /onClick=\{onRefresh\} disabled=\{stale\}/)
+  assert.match(source, /<PairingPanel\s+stale=\{serviceStale\}/)
+})
+
+test('output selection survives recent-list rollover with its own command and cursor', () => {
+  const output = source.slice(source.indexOf('function FinishedOutput('), source.indexOf('function formatLimit('))
+  assert.match(output, /useState\(commands\[0\]\)/)
+  assert.match(output, /commands\.find\(item => item\.id === selectedCommand\.id\) \|\| selectedCommand/)
+  assert.match(output, /setSelectedCommand\(item\)[\s\S]*setCursor\(0\)[\s\S]*setPrevious\(\[\]\)/)
+  assert.doesNotMatch(output, /\|\| commands\[0\]|Page \{previous\.length/)
+})

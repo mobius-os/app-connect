@@ -9,6 +9,7 @@ import {
   disconnectPresentation,
   outputPage,
   outputPath,
+  runnerUpdateFeedback,
   statusOf,
 } from './connect-state.mjs'
 
@@ -110,4 +111,65 @@ test('an unpaired entry is removed without implying that a runner exists', () =>
 test('a tail without line breaks stays bounded', () => {
   const tail = appendTail('', [{ text: 'x'.repeat(10000) }], 12, 4000)
   assert.equal(tail.length, 4000)
+})
+
+const currentRunner = { id: 'h_update', paired: true, online: true, runner_update_available: false }
+const lostUpdate = { hostId: 'h_update', outcome: 'lost', exitCode: 125 }
+
+test('a self-restarted update is confirmed by its fresh current runner, not the missing exit report', () => {
+  assert.deepEqual(runnerUpdateFeedback(currentRunner, lostUpdate), {
+    tone: 'success',
+    message: 'Runner updated and reconnected. The installer’s final report wasn’t received.',
+    retry: false,
+  })
+  assert.equal(lostUpdate.outcome, 'lost')
+  assert.equal(lostUpdate.exitCode, 125)
+})
+
+test('lost update feedback follows reconnection without rerunning the installer', () => {
+  assert.equal(runnerUpdateFeedback({ ...currentRunner, online: false }, lostUpdate).tone, 'waiting')
+  assert.equal(runnerUpdateFeedback(currentRunner, lostUpdate).tone, 'success')
+})
+
+test('an offline, stale, unpaired or still-outdated runner never confirms a lost update', () => {
+  for (const host of [
+    { ...currentRunner, online: false },
+    { ...currentRunner, paired: false },
+    { ...currentRunner, runner_update_available: true },
+    { ...currentRunner, runner_update_available: undefined },
+  ]) {
+    const feedback = runnerUpdateFeedback(host, lostUpdate)
+    assert.equal(feedback.tone, 'waiting')
+    assert.equal(feedback.retry, false)
+    assert.match(feedback.message, /not confirmed/)
+  }
+  assert.equal(runnerUpdateFeedback(currentRunner, lostUpdate, true).tone, 'waiting')
+})
+
+test('update confirmation requires both a completed installer and fresh connectivity when a result exists', () => {
+  const completed = { hostId: currentRunner.id, outcome: 'completed', exitCode: 0 }
+  assert.equal(runnerUpdateFeedback(currentRunner, completed).tone, 'success')
+  assert.equal(runnerUpdateFeedback({ ...currentRunner, online: false }, completed).tone, 'waiting')
+  assert.equal(runnerUpdateFeedback(currentRunner, completed, true).tone, 'waiting')
+})
+
+test('a connected current runner does not conceal a failed, canceled, expired or timed-out installer', () => {
+  for (const outcome of ['canceled', 'timed_out']) {
+    assert.equal(runnerUpdateFeedback(currentRunner, { ...lostUpdate, outcome }).tone, 'error')
+  }
+  const failed = runnerUpdateFeedback(currentRunner, { ...lostUpdate, outcome: 'completed' })
+  assert.equal(failed.tone, 'error')
+  assert.match(failed.message, /failed \(exit 125\)/)
+  for (const code of ['host_busy', 'command_expired']) {
+    assert.equal(runnerUpdateFeedback(currentRunner, { hostId: currentRunner.id, code }).retry, true)
+  }
+  assert.equal(runnerUpdateFeedback(currentRunner, { ...lostUpdate, outcome: 'expired' }).retry, true)
+  assert.deepEqual(runnerUpdateFeedback(currentRunner, { ...lostUpdate, errorMessage: 'Request failed.' }), {
+    tone: 'error', message: 'Request failed.', retry: false,
+  })
+})
+
+test('an update result from another machine cannot confirm this one', () => {
+  assert.equal(runnerUpdateFeedback({ ...currentRunner, id: 'h_other' }, lostUpdate), null)
+  assert.equal(runnerUpdateFeedback(currentRunner, null), null)
 })

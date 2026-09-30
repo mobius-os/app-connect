@@ -8,6 +8,7 @@ import {
   disconnectPresentation,
   outputPage,
   outputPath,
+  runnerUpdateFeedback,
   statusOf,
 } from './connect-state.mjs'
 import { loadConnectionList, responseError, responseErrorData } from './connect-api.mjs'
@@ -663,18 +664,8 @@ function UpdatePanel({
   const copyKey = `update:${host.id}`
   const currentResult = result?.hostId === host.id ? result : null
   const updated = !host.runner_update_available
-  const retry = currentResult?.code === 'host_busy' || currentResult?.code === 'command_expired'
-  const resultMessage = currentResult?.code === 'host_busy' ? 'Another command is using this machine. When it finishes, try again; nothing was changed.'
-    : currentResult?.code === 'command_expired' ? 'The machine didn’t start the update before it expired. Nothing ran; try again.'
-    : currentResult?.errorMessage || (
-    currentResult?.outcome === 'expired' ? 'The machine didn’t start the update before it expired. Nothing ran; try again.'
-      : currentResult?.outcome === 'timed_out' ? 'The update timed out. Check the machine before trying again.'
-      : currentResult?.outcome === 'canceled' ? 'The update was canceled.'
-      : currentResult?.outcome === 'lost' ? 'The command result was lost. Check the runner before trying again.'
-      : currentResult?.exitCode !== 0 ? `Update command failed (exit ${currentResult?.exitCode}). Review the command result and try again.`
-      : null
-  )
-  const confirmed = updated && (currentResult?.outcome === 'completed' || !currentResult?.outcome) && currentResult?.exitCode === 0
+  const feedback = runnerUpdateFeedback(host, currentResult, stale)
+  const retry = feedback?.retry
   return <div className="cn-update">
     {!updated && !host.busy && !updating && host.online ? <InlineActionConfirm
       open={confirming}
@@ -701,10 +692,10 @@ function UpdatePanel({
       />
     </div> : null}
     {updating ? <p className="cn-update-result" role="status">Updating on {host.name}…</p> : null}
-    {currentResult && !updating ? <p
-      className={`cn-update-result${confirmed ? ' is-success' : retry || (currentResult?.exitCode === 0 && !confirmed) ? ' is-waiting' : ' is-error'}`}
+    {feedback && !updating ? <p
+      className={`cn-update-result is-${feedback.tone}`}
       role="status"
-    >{resultMessage || (confirmed ? 'Runner updated and reconnected.' : 'Installer finished; Connect has not confirmed the updated runner yet.')}</p> : null}
+    >{feedback.message}</p> : null}
   </div>
 }
 

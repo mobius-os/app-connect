@@ -13,6 +13,7 @@ import {
   platformLabel,
 } from './connect-state.mjs'
 import { loadConnectionList, responseError, responseErrorData } from './connect-api.mjs'
+import BrowserAccessSection from './BrowserAccessSection.jsx'
 
 const DISCONNECT_COMMAND = 'python3 ~/.mobius-connect/runner.py --uninstall'
 const DEFAULT_MACHINE_NAME = 'My machine'
@@ -162,6 +163,23 @@ const CSS = `
   .cn-copybtn { min-width: 120px; }
   .cn-copybtn.is-copied { color: #36b999; border-color: color-mix(in srgb, var(--cn-mint) 35%, var(--border)); background: color-mix(in srgb, var(--cn-mint) 9%, var(--surface)); }
 
+  .cn-browser-warning { max-width: 67ch; margin: 0 0 16px; color: var(--text); font-size: 12.5px; line-height: 1.5; }
+  .cn-browser-note { margin: 9px 0 15px; color: var(--muted); font-size: 11.5px; line-height: 1.45; }
+  .cn-browser-create { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 10px; }
+  .cn-browser-create > .cn-btn { min-height: 46px; }
+  .cn-browser-link { margin: 14px 0 18px; padding: 15px; border: 1px solid var(--border); border-radius: 14px; background: var(--surface); }
+  .cn-browser-link-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  .cn-browser-link-head strong { font-size: 13px; font-weight: 680; }
+  .cn-browser-link p { margin: 9px 0 12px; color: var(--muted); font-size: 12px; line-height: 1.45; }
+  .cn-browser-action-error { margin: 12px 0; color: #ffb7ba; font-size: 12px; line-height: 1.45; }
+  .cn-browser-row { min-height: 72px; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--border); }
+  .cn-browser-person { min-width: 0; }
+  .cn-browser-person .cn-outbound-name { display: block; }
+  .cn-browser-stop-warning { display: block; max-width: 46ch; margin-top: 5px; color: #d7a848; font-size: 11.5px; line-height: 1.4; }
+  .cn-browser-row-action { display: grid; grid-template-columns: 126px 132px 80px; align-items: center; gap: 8px; }
+  .cn-browser-row-action .cn-btn { min-width: 0; padding: 0 8px; }
+  .cn-browser-retry { flex: none; }
+
   .cn-rename { pointer-events: auto; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; width: 100%; }
   .cn-rename .cn-input { height: 40px; flex: 1; min-width: 0; }
   .cn-rename-actions { display: flex; gap: 8px; flex: none; }
@@ -201,6 +219,11 @@ const CSS = `
     .cn-rename-actions .cn-btn { flex: 1; }
     .cn-code-row { grid-template-columns: 1fr; }
     .cn-code-row .cn-btn { width: 100%; min-width: 0; }
+    .cn-browser-create { grid-template-columns: 1fr; }
+    .cn-browser-create > .cn-btn { width: 100%; }
+    .cn-browser-row { align-items: flex-start; flex-direction: column; }
+    .cn-browser-row-action { width: 100%; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+    .cn-browser-row-action .cn-inline-not-now { grid-column: 2; }
   }
 `
 
@@ -1398,6 +1421,7 @@ export default function App({ appId, token }) {
         onKeep={() => setConfirmation(null)}
         onRevoke={revokeOutboundAccess}
       /> : null}
+      <BrowserAccessSection headers={headers}/>
     </main>
   </div>
 }

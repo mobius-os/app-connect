@@ -1,0 +1,17 @@
+{
+  "name": "mobius-connect-tests",
+  "private": true,
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "node --test test_api.mjs test_browser_access.mjs test_layout.mjs test_state.mjs",
+    "test:browser-access": "node --test test_browser_access.mjs"
+  },
+  "devDependencies": {
+    "esbuild": "0.25.12",
+    "playwright": "1.62.1",
+    "react": "19.3.0",
+    "react-dom": "19.3.0"
+  }
+}

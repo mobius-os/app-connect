@@ -4,6 +4,7 @@ import importlib.util
 import io
 import json
 import os
+import http.client
 import threading
 import unittest
 import urllib.error
@@ -278,16 +279,67 @@ class MachTargetingTest(unittest.TestCase):
             "platform": "Linux 6.8",
         }]
         mach._call = mock.Mock()
-        stdin = mock.Mock()
-        stdin.read.return_value = "x" * (mach._MAX_COMMAND_CHARS + 1)
+        # Exercise the resource boundary without allocating a huge fixture.
+        mach._MAX_REQUEST_BODY_BYTES = 32
+        stdin = io.StringIO("x" * 100)
 
         with mock.patch.object(mach.sys, "stdin", stdin), \
                 contextlib.redirect_stderr(io.StringIO()), \
                 self.assertRaises(SystemExit):
             mach.main(["-m", "Host", "--script"])
 
-        stdin.read.assert_called_once_with(mach._MAX_COMMAND_CHARS + 1)
+        self.assertEqual(stdin.tell(), 33)
         mach._call.assert_not_called()
+
+    def test_script_input_budget_counts_utf8_bytes_not_characters(self):
+        mach = load_mach()
+        mach._MAX_REQUEST_BODY_BYTES = 32
+        for script, accepted in [("é" * 16, True), ("é" * 17, False)]:
+            with self.subTest(accepted=accepted), \
+                    mock.patch.object(mach.sys, "stdin", io.StringIO(script)), \
+                    contextlib.redirect_stderr(io.StringIO()):
+                if accepted:
+                    self.assertEqual(mach._read_script(), script)
+                else:
+                    with self.assertRaises(SystemExit):
+                        mach._read_script()
+
+    def test_script_above_64_kib_is_transmitted_intact_as_utf8_json(self):
+        mach = load_mach()
+        mach._hosts = lambda: [{
+            "id": "h_test", "name": "Host", "online": True,
+            "platform": "Linux 6.8",
+        }]
+        script = "# café 🛰 '$literal'\n" * 20_000 + "printf ready\n"
+        captured = []
+
+        class Handler(BaseHTTPRequestHandler):
+            def do_POST(self):
+                body = self.rfile.read(int(self.headers["Content-Length"]))
+                captured.append(json.loads(body))
+                self.send_response(200)
+                self.end_headers()
+                self.wfile.write(json.dumps(exec_result(captured[-1])).encode())
+
+            def log_message(self, *args):
+                pass
+
+        with serve(Handler) as server, mock.patch.dict(os.environ, {
+            "API_BASE_URL": f"http://127.0.0.1:{server.server_port}",
+            "AGENT_TOKEN": "test-token",
+        }), mock.patch.object(mach.sys, "stdin", io.StringIO(script)):
+            self.assertEqual(mach.main(["-m", "Host", "--script", "--shell", "bash"]), 0)
+        self.assertEqual(captured[0]["script"], script)
+        self.assertNotIn("cmd", captured[0])
+
+    def test_empty_and_nul_scripts_are_still_rejected(self):
+        mach = load_mach()
+        for script in ("", " \n", "echo bad\x00"):
+            with self.subTest(script=script), \
+                    mock.patch.object(mach.sys, "stdin", io.StringIO(script)), \
+                    contextlib.redirect_stderr(io.StringIO()), \
+                    self.assertRaises(SystemExit):
+                mach._read_script()
 
     def test_windows_literal_script_has_no_cmd_length_ceiling(self):
         mach = load_mach()
@@ -345,6 +397,18 @@ class MachTargetingTest(unittest.TestCase):
             mach._MAX_WINDOWS_COMMAND_CHARS,
         )
         mach._call.assert_not_called()
+
+    def test_posix_inline_command_is_not_limited_by_old_character_guard(self):
+        mach = load_mach()
+        mach._hosts = lambda: [{"id": "h_test", "name": "Host", "online": True,
+                                "platform": "Linux"}]
+        sent = []
+        mach._call = lambda path, payload=None, *a, **k: (
+            sent.append(payload) or exec_result(payload)
+        )
+        command = "printf ready # " + "é" * 70_000
+        self.assertEqual(mach.main(["-m", "Host", command]), 0)
+        self.assertEqual(sent[0]["cmd"], command)
 
     def test_silent_remote_failure_has_a_diagnostic(self):
         mach = load_mach()
@@ -450,6 +514,41 @@ class MachStreamingTest(unittest.TestCase):
         self.assertEqual(exec_payload["timeout"], 7200)
         self.assertIn("after=1", calls[2][0])
         self.assertIn("after=2", calls[3][0])
+
+    def test_finished_output_drains_every_retained_page_before_exiting(self):
+        mach = load_mach()
+        mach._hosts = lambda: [self.HOST]
+        rid = "a" * 16
+        calls = []
+
+        def call(path, payload=None, method="GET", retry_until=None):
+            calls.append(path)
+            after = int(path.split("after=")[1].split("&")[0])
+            result = {"request_id": rid, **self.result(4)}
+            return {"request_id": rid, "chunks": [
+                {"seq": after, "stream": "stdout", "text": f"{after}\n"}],
+                "next": after + 1, "available_next": 3,
+                "output_seq": 3, "result": result}
+
+        mach._call = call
+        code, out, err = self.run_mach(mach, ["-m", "Host", "--output", rid])
+        self.assertEqual((code, out, err), (4, "0\n1\n2\n", ""))
+        self.assertEqual(len(calls), 3)
+        self.assertIn("after=2", calls[-1])
+
+    def test_output_does_not_apply_attach_preview_limit(self):
+        mach = load_mach()
+        mach._hosts = lambda: [self.HOST]
+        rid = "b" * 16
+        body = "x" * (mach._ATTACH_BACKLOG_CHARS + 1)
+        mach._call = lambda path, *a, **k: {
+            "request_id": rid,
+            "chunks": [{"seq": 0, "stream": "stdout", "text": body}],
+            "next": 1, "available_next": 1, "output_seq": 1,
+            "result": {"request_id": rid, **self.result()},
+        }
+        code, out, err = self.run_mach(mach, ["-m", "Host", "--output", rid])
+        self.assertEqual((code, out, err), (0, body, ""))
 
     def test_runner_without_live_output_prints_the_final_result(self):
         mach, state = self.streaming_mach([])
@@ -625,6 +724,64 @@ class MachFollowEdgeTest(unittest.TestCase):
 
 
 class MachHttpErrorTest(unittest.TestCase):
+    def test_lost_post_response_retries_same_request_and_admission_deadline(self):
+        mach = load_mach()
+        mach._hosts = lambda: [{"id": "h_test", "name": "Host", "online": True}]
+        sent = []
+
+        def open_request(req, timeout):
+            body = json.loads(req.data)
+            sent.append(body)
+            if len(sent) == 1:
+                raise http.client.IncompleteRead(b'{"request_id":')
+            return io.BytesIO(json.dumps(exec_result(body)).encode())
+
+        with mock.patch.dict(os.environ, {
+            "API_BASE_URL": "http://mobius.test", "AGENT_TOKEN": "test-token",
+        }), mock.patch.object(mach._API_OPENER, "open", side_effect=open_request), \
+                mock.patch.object(mach.time, "sleep"), \
+                contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(mach.main(["-m", "Host", "echo ok"]), 0)
+
+        self.assertEqual(len(sent), 2)
+        self.assertEqual(sent[0], sent[1])
+        self.assertLessEqual(sent[0]["admission_deadline"] - mach.time.time(), 10)
+        self.assertGreater(sent[0]["admission_deadline"] - mach.time.time(), 0)
+
+    def test_connection_reset_after_lost_post_response_names_recovery_id(self):
+        mach = load_mach()
+        rid = "c" * 16
+        with mock.patch.dict(os.environ, {
+            "API_BASE_URL": "http://mobius.test", "AGENT_TOKEN": "test-token",
+        }), mock.patch.object(mach._API_OPENER, "open", side_effect=ConnectionResetError("reset")), \
+                contextlib.redirect_stderr(io.StringIO()) as stderr, \
+                self.assertRaises(SystemExit) as raised:
+            mach._call("/api/connect/hosts/h/exec", {"request_id": rid}, "POST")
+        self.assertEqual(raised.exception.code, 2)
+        self.assertIn(rid, stderr.getvalue())
+        self.assertIn("--attach", stderr.getvalue())
+
+    def test_request_budget_includes_json_escaping_metadata_and_utf8(self):
+        mach = load_mach()
+        for script in ('"' * 20, "é" * 20, "\n" * 20):
+            payload = {"script": script, "shell": "bash"}
+            encoded_size = len(json.dumps(payload, ensure_ascii=False).encode("utf-8"))
+            for limit in (encoded_size - 1, encoded_size):
+                with self.subTest(script=script, limit=limit), mock.patch.dict(os.environ, {
+                    "API_BASE_URL": "http://mobius.test",
+                    "AGENT_TOKEN": "test-token",
+                }), mock.patch.object(mach, "_MAX_REQUEST_BODY_BYTES", limit), \
+                        mock.patch.object(mach._API_OPENER, "open", return_value=io.BytesIO(b'{}')) as opened, \
+                        contextlib.redirect_stderr(io.StringIO()):
+                    if limit < encoded_size:
+                        with self.assertRaises(SystemExit):
+                            mach._call("/api/connect/hosts/h/exec", payload, "POST")
+                        opened.assert_not_called()
+                    else:
+                        self.assertEqual(mach._call("/api/connect/hosts/h/exec", payload, "POST"), {})
+                        self.assertEqual(len(opened.call_args.args[0].data), encoded_size)
+
+
     def test_short_calls_use_a_bounded_network_timeout(self):
         mach = load_mach()
         response = io.BytesIO(b'{"hosts":[]}')
@@ -839,6 +996,20 @@ class MachResponseValidationTest(unittest.TestCase):
                 mach._hosts()
             self.assertEqual(raised.exception.code, 2)
 
+
+
+class MachIncompleteOutputTest(unittest.TestCase):
+    def test_capture_failure_is_visible_without_changing_known_success(self):
+        mach = load_mach()
+        stderr = io.StringIO()
+        with contextlib.redirect_stderr(stderr):
+            code = mach._print_result({
+                "request_id": "a" * 16, "stdout": "", "stderr": "",
+                "exit_code": 0, "truncated": False,
+                "output_error": "disk full",
+            }, "a" * 16, bodies=False)
+        self.assertEqual(code, 0)
+        self.assertIn("output is incomplete: disk full", stderr.getvalue())
 
 if __name__ == "__main__":
     unittest.main()

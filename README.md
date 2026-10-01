@@ -80,8 +80,10 @@ its saved pairing state.
 **Full access** (the checkbox when granting, or the switch on an existing
 connection) gives commands that arrive through it an agent sign-in, so the
 other Möbius's agent can run `mapi` against this instance — for example to
-drive an update end to end. It is an agent, never the owner: it cannot answer
-approval, restart, or question cards. Turning the switch off, or revoking the
+drive an update end to end. This is broad owner-scoped API authority, not a
+human browser login. An authenticated agent may answer ordinary cards it can
+read, subject to current-card checks; sealed input and human-only operations
+retain their own boundaries. Turning the switch off, or revoking the
 connection, ends it immediately; it survives restarts until then.
 
 ## Agent command helper
@@ -105,6 +107,7 @@ If `mach` is killed, the command keeps running; Ctrl-C stops it:
 ```bash
 /data/apps/connect/mach -m Host --commands          # running ids and labels
 /data/apps/connect/mach -m Host --attach <id>       # resume with its latest output
+/data/apps/connect/mach -m Host --output <id>       # read all retained output
 ```
 
 The quoted heredoc delimiter keeps the script literal in the local shell.
@@ -114,6 +117,14 @@ Windows. Use `--` when a remote command begins with a dash. For authenticated
 calls to Möbius, `mach` ignores proxy environment variables and refuses
 redirects so owner authorization stays on the configured destination.
 
+Literal scripts travel through stdin rather than command-line arguments, so
+they have no 64 KiB command-size ceiling. Their complete UTF-8 JSON request
+(including escaping and metadata) must fit Möbius's shared 64 MiB HTTP body
+limit. `mach` bounds input reading and checks that encoded size before sending;
+current POSIX runners execute long inline commands from a private file without
+using stdin for command source. Windows cmd.exe retains its genuine command-line
+limit; use literal PowerShell scripts for larger Windows programs.
+
 ## Platform compatibility
 
 The app and Möbius platform update separately. Shared access requires the
@@ -122,3 +133,27 @@ A missing route (404/501) is not proof that a restart is pending: check for a
 platform update, and restart only when that installed update requests it.
 A 503 means the service is unavailable and may need diagnosis. Each direction
 loads independently so an unavailable feature does not hide the other one.
+
+## Output and recovery
+
+Full numbered text output is retained privately on the Möbius instance, separate
+from the 60,000-character head/tail result preview. The app shows recent commands
+and pages through their output; `mach --output` reads all retained pages. No
+automatic history cleanup is enabled. Intentionally removing a saved machine
+also removes its retained command output, so save anything needed first.
+
+Acknowledged output survives backend restarts. Pending uploads spool to private
+anonymous disk scratch on the machine and survive connection outages, not runner
+process death or machine reboot. Capture/write failure is marked incomplete;
+execution and cancellation remain supervised. This protocol carries UTF-8 text,
+not an exact binary byte stream. Output may contain sensitive command data.
+
+Retries reuse one request ID and original admission deadline. Finished identity
+outlives the short recent-result cache; an expired unknown submission is rejected
+rather than silently executed again. New runners carry reconnect inventories in
+a POST body instead of a size-limited URL; GET remains for older external servers.
+
+A shared-access service being alive does not prove the other Möbius is connected.
+Revocation is confirmed remotely before saved pairing state is removed. If the
+other instance is offline, Connect keeps the connection and reports that
+revocation could not be confirmed; it never silently claims remote revocation.

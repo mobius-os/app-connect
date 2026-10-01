@@ -7,16 +7,55 @@ export function activeCommands(host) {
   return host?.active_command ? [host.active_command] : []
 }
 
+export function platformLabel(platform) {
+  if (!platform) return ''
+  if (/^(darwin|macos|mac os)/i.test(platform)) return 'macOS'
+  if (/^windows/i.test(platform)) return 'Windows'
+  if (/^linux/i.test(platform)) return 'Linux'
+  return platform
+}
+
 export function statusOf(host) {
   const running = activeCommands(host).length
   if (running > 1) return { cls: 'busy', label: `Working · ${running}` }
   if (running || host?.busy) return { cls: 'busy', label: 'Working' }
-  if (host?.online && host?.runner_update_available) {
-    return { cls: 'wait', label: 'Update needed' }
-  }
   if (host?.online) return { cls: 'on', label: 'Online' }
   if (host?.paired) return { cls: 'off', label: 'Offline' }
   return { cls: 'wait', label: 'Waiting to pair' }
+}
+
+// Updating a runner can restart the service that would report the installer’s
+// exit status. Confirm that update from a fresh, current runner connection;
+// never reinterpret a lost ordinary command as successful.
+export function runnerUpdateFeedback(host, result, stale = false) {
+  if (!result || result.hostId !== host?.id) return null
+  const feedback = (tone, message, retry = false) => ({ tone, message, retry })
+  if (result.code === 'host_busy') {
+    return feedback('waiting', 'Another command is using this machine. When it finishes, try again; nothing was changed.', true)
+  }
+  if (result.code === 'command_expired' || result.outcome === 'expired') {
+    return feedback('waiting', 'The machine didn’t start the update before it expired. Nothing ran; try again.', true)
+  }
+  if (result.errorMessage) return feedback('error', result.errorMessage)
+  if (result.outcome === 'timed_out') {
+    return feedback('error', 'The update timed out. Check the machine before trying again.')
+  }
+  if (result.outcome === 'canceled') return feedback('error', 'The update was canceled.')
+
+  const currentRunner = !stale && host.paired === true && host.online === true
+    && host.runner_update_available === false
+  if (result.outcome === 'lost') {
+    return currentRunner
+      ? feedback('success', 'Runner updated and reconnected. The installer’s final report wasn’t received.')
+      : feedback('waiting', 'The update’s final result wasn’t reported. Connect has not confirmed a current runner; check the machine before retrying.')
+  }
+  if (result.exitCode !== 0) {
+    return feedback('error', `Update command failed (exit ${result.exitCode}). Review the command result and try again.`)
+  }
+  if (currentRunner && (result.outcome === 'completed' || !result.outcome)) {
+    return feedback('success', 'Runner updated and reconnected.')
+  }
+  return feedback('waiting', 'Installer finished; Connect has not confirmed the updated runner yet.')
 }
 
 export function commandCapabilities(command) {
@@ -42,6 +81,25 @@ export function cancelCommandPath(host, command) {
 export function outputPath(host, command, after) {
   const path = commandPath(host, command, 'output')
   return path ? `${path}?after=${after}` : null
+}
+
+// Keep only the current server-bounded page in the UI. A cursor advances by
+// sequence number, not by chunk count (gaps can exist in older output).
+export function outputPage(view, after) {
+  if (!Array.isArray(view?.chunks) || !Number.isSafeInteger(view.next)
+      || view.next < after || typeof view.has_more !== 'boolean') {
+    throw new Error('Connect returned an invalid output page.')
+  }
+  if (view.has_more && view.next <= after) {
+    throw new Error('Connect did not advance the output page. Try again later.')
+  }
+  return {
+    text: view.chunks.map(chunk => chunk.text || '').join(''),
+    next: view.next,
+    hasMore: view.has_more,
+    complete: view.output_complete === true,
+    preview: [view.result?.stdout, view.result?.stderr].filter(Boolean).join('\n'),
+  }
 }
 
 // Characters kept even when output has no line breaks.

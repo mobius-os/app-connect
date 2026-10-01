@@ -55,6 +55,12 @@ test('the two connection directions are the permanent page structure', () => {
   assert.doesNotMatch(source, /Ask them to add a machine/)
 })
 
+test('connection sections use space rather than a duplicate divider above shared access', () => {
+  assert.doesNotMatch(source, /\.cn-section(?:-first)?\s*\{[^}]*border(?:-top)?:/s)
+  assert.match(source, /\.cn-host\s*\{[^}]*border-bottom:\s*1px solid var\(--border\)/s)
+  assert.match(source, /\.cn-list\s*\{[^}]*border-top:\s*1px solid var\(--border\)/s)
+})
+
 test('shared access stays progressive and revocable', () => {
   assert.match(source, /Paste their curl … \| sh command/)
   assert.match(source, /Full command access until you revoke it/)
@@ -129,7 +135,6 @@ test('confirmations stay local to their action and do not reflow machine rows', 
   assert.match(source, /\.cn-list\s*\{[^}]*overflow:\s*visible;/s)
   assert.match(source, /function InlineActionConfirm\(/)
   assert.match(source, /aria-expanded=\{open\}/)
-  assert.match(source, /id=\{`cn-revoke-\$\{connection\.id\}`\}/)
   assert.match(source, /id=\{`cn-stop-\$\{host\.id\}-\$\{command\.id\}`\}/)
   assert.match(source, /confirmLabel=\{host\.online \? 'Confirm disconnect'/)
   assert.doesNotMatch(source, /cn-outbound-confirm|cn-command-confirm|cn-update-popover/)
@@ -139,7 +144,7 @@ test('machine headings and hit targets belong to a summary independent of full-w
   const row = source.slice(source.indexOf('function MachineRow('), source.indexOf('export default function App'))
   assert.match(row, /<article className="cn-host">\s*<div className="cn-host-summary">/)
   assert.match(row, /aria-controls=\{`cn-details-\$\{host.id\}`\}/)
-  assert.match(row, /<div className="cn-host-details" id=\{`cn-details-\$\{host.id\}`\} hidden=\{!expanded\}>[\s\S]*<CommandPanel[\s\S]*<FinishedOutput[\s\S]*Manage machine[\s\S]*<UpdatePanel[\s\S]*<DisconnectPanel/)
+  assert.match(row, /<div className="cn-host-details" id=\{`cn-details-\$\{host.id\}`\} hidden=\{!expanded\}>[\s\S]*<CommandPanel[\s\S]*<FinishedOutput[\s\S]*<UpdatePanel[\s\S]*<DisconnectPanel/)
   assert.match(source, /\.cn-host-toggle\s*\{[^}]*inset:\s*0;[^}]*height:\s*100%;/s)
   assert.match(source, /\.cn-host-details\[hidden\]\s*\{\s*display:\s*none;/)
   assert.doesNotMatch(source, /height:\s*71px|\.cn-command \+ \.cn-command/)
@@ -166,7 +171,7 @@ test('agent access is offered only where the platform supports it', () => {
   assert.match(source, /setAgentSupported\(shared\.data\?\.agent_access === true\)/)
   assert.match(source, /\{agentSupported \? <label className="cn-agent-choice">/)
   assert.match(source, /\{agentSupported && connection\.status === 'active' \? <label\s+className=\{`cn-agent-toggle/)
-  assert.match(source, /<div className="cn-outbound-actions">[\s\S]*cn-agent-toggle[\s\S]*<ActionConfirm/)
+  assert.match(source, /<div className="cn-outbound-actions">[\s\S]*cn-agent-toggle[\s\S]*<InlineActionConfirm/)
   assert.match(source, /\/>Full access\s*<\/label>/)
   assert.match(source, /JSON\.stringify\(\{ label, command, agent: accessAgent \}\)/)
   assert.match(source, /method: 'PATCH',[\s\S]*JSON\.stringify\(\{ agent \}\)/)
@@ -214,18 +219,23 @@ test('output selection survives recent-list rollover with its own command and cu
 test('compact summaries keep activity separate from management without resetting retained output', () => {
   const row = source.slice(source.indexOf('function MachineRow('), source.indexOf('export default function App'))
   const summary = row.slice(row.indexOf('return <article'), row.indexOf('className="cn-host-details"'))
-  assert.doesNotMatch(summary, /cn-rename|onRenameStart|DisconnectPanel|UpdatePanel/)
+  assert.doesNotMatch(summary, /DisconnectPanel|UpdatePanel/)
+  assert.match(summary, /cn-host-top[\s\S]*cn-host-name[\s\S]*cn-name-edit[\s\S]*onRenameStart/)
+  assert.match(summary, /renaming \? <div className="cn-rename">/)
+  assert.match(source, /\.cn-name-edit\s*\{[^}]*pointer-events:\s*auto;[^}]*width:\s*44px;[^}]*height:\s*44px;/s)
   assert.match(summary, /aria-expanded=\{expanded\}/)
   assert.match(row, /hidden=\{!expanded\}/)
   assert.doesNotMatch(row, /expanded && host.recent_commands|!host.busy.*cn-toggle-mark/)
-  assert.match(row, /<details className="cn-manage">\s*<summary>Manage machine<\/summary>/)
+  assert.doesNotMatch(row, /<details|<summary|cn-manage/)
+  assert.match(row, /<FinishedOutput[\s\S]*<UpdatePanel[\s\S]*<DisconnectPanel/)
   assert.match(source, /onStopConfirm=\{command => \{\s*setExpandedId\(host.id\)/)
   assert.match(source, /onUpdate=\{\(\) => \{\s*setExpandedId\(host.id\)/)
 })
 
-test('shared access places permissions and revocation behind access details', () => {
+test('shared access exposes permissions and revocation directly without an extra expander', () => {
   const outbound = source.slice(source.indexOf('function OutboundAccess('), source.indexOf('function CommandPanel('))
-  assert.match(outbound, /<summary>Access details<\/summary>[\s\S]*cn-agent-toggle[\s\S]*Revoke access/)
+  assert.doesNotMatch(outbound, /<details|<summary|cn-manage/)
+  assert.match(outbound, /cn-outbound-actions[\s\S]*cn-agent-toggle[\s\S]*Revoke access/)
   assert.doesNotMatch(outbound, /can’t answer your approvals/)
 })
 
@@ -235,4 +245,12 @@ test('busy refreshes preserve the expanded activity and defer disconnect', () =>
   assert.doesNotMatch(app, /\bconfirmingId\b(?![=])/)
   assert.doesNotMatch(app, /host.id === expandedId && host.busy/)
   assert.match(source, /<DisconnectPanel[\s\S]*?stale=\{stale \|\| host.busy\}/)
+})
+
+
+test('revocation uses the same in-place confirmation as disconnect', () => {
+  const outbound = source.slice(source.indexOf('function OutboundAccess('), source.indexOf('function CommandPanel('))
+  assert.match(outbound, /<InlineActionConfirm[\s\S]*confirmLabel=\{connection.online \? 'Confirm revoke'/)
+  assert.doesNotMatch(outbound, /<ActionConfirm/)
+  assert.match(source, /\.cn-outbound-actions \.cn-inline-confirm\s*\{[^}]*width:\s*auto;/)
 })

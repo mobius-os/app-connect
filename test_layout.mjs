@@ -254,3 +254,14 @@ test('revocation uses the same in-place confirmation as disconnect', () => {
   assert.doesNotMatch(outbound, /<ActionConfirm/)
   assert.match(source, /\.cn-outbound-actions \.cn-inline-confirm\s*\{[^}]*width:\s*auto;/)
 })
+
+
+test('rename stays icon-only while preserving a touch target and keyboard focus', () => {
+  const rule = source.match(/\.cn-name-edit\s*\{([^}]*)\}/)[1]
+  assert.match(rule, /width:\s*44px/)
+  assert.match(rule, /height:\s*44px/)
+  assert.match(rule, /border:\s*0;/)
+  assert.match(rule, /background:\s*transparent;/)
+  assert.match(source, /\.cn-btn\.cn-name-edit:hover:not\(:disabled\)\s*\{[^}]*background:\s*transparent;/)
+  assert.match(source, /\.cn-btn:focus-visible[^}]*outline:\s*2px/)
+})

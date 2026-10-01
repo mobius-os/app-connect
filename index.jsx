@@ -95,7 +95,8 @@ const CSS = `
   .cn-host-body, .cn-outbound-copy { position: relative; z-index: 1; grid-column: 2; grid-row: 1; min-width: 0; }
   .cn-host-body { pointer-events: none; }
   .cn-host-top { display: flex; align-items: center; min-width: 0; gap: 8px; }
-  .cn-name-edit { pointer-events: auto; flex: none; width: 44px; height: 44px; min-height: 44px; padding: 0; margin: -10px 0; border-radius: 8px; }
+  .cn-name-edit { pointer-events: auto; flex: none; width: 44px; height: 44px; min-height: 44px; padding: 0; margin: -10px 0; border: 0; border-radius: 8px; background: transparent; color: var(--muted); }
+  .cn-btn.cn-name-edit:hover:not(:disabled) { background: transparent; color: var(--text); }
   .cn-host-name { display: block; min-width: 0; max-width: min(100%, 44ch); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); font-size: 14px; font-weight: 650; }
   .cn-outbound-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); font-size: 14px; font-weight: 650; }
   .cn-host-meta, .cn-outbound-meta { display: block; margin-top: 4px; color: var(--muted); font-size: 11.5px; }

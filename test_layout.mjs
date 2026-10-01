@@ -33,8 +33,8 @@ test('new machines start with an editable default name and restore it after crea
 
 test('renaming uses the standard edit icon instead of making the name clickable', () => {
   assert.match(source, /import \{[^}]*Pencil[^}]*\} from '@openai\/apps-sdk-ui\/components\/Icon'/)
-  assert.match(source, /<span className="cn-host-name">\{host\.name\}<\/span>/)
-  assert.match(source, /className="cn-host-edit"[\s\S]*aria-label=\{`Rename \$\{host\.name\}`\}[\s\S]*<Pencil size=\{15\}/)
+  assert.match(source, /<span className="cn-host-name" title=\{host.name\}>\{host\.name\}<\/span>/)
+  assert.match(source, /onClick=\{onRenameStart\}[\s\S]*aria-label=\{`Rename \$\{host\.name\}`\}[\s\S]*<Pencil size=\{15\}/)
   assert.doesNotMatch(source, /cn-host-namebtn/)
 })
 
@@ -72,6 +72,15 @@ test('runner updates use typed error codes and command outcomes', () => {
   assert.match(source, /\{feedback\.message\}/)
   assert.doesNotMatch(source, /exitCode === 125|runner restarted before the command result was reported|\/busy\|running a command\/i/)
   assert.match(source, /cmd: host\.update_command, timeout: 180/)
+})
+
+test('confirmed updates remove the whole notice without hiding pending updates or failures', () => {
+  const update = source.slice(source.indexOf('function UpdatePanel('), source.indexOf('function MachineRow('))
+  assert.match(update, /if \(!updating && feedback\?\.tone === 'success'\) return null/)
+  assert.ok(update.indexOf("feedback?.tone === 'success'") < update.indexOf('return <div className="cn-update">', update.indexOf('const feedback =')))
+  assert.match(update, /\{updating \? <p[\s\S]*?Updating on/)
+  assert.match(update, /\{feedback && !updating \? <p[\s\S]*?\{feedback\.message\}/)
+  assert.doesNotMatch(source, /\.cn-update-result\.is-success/)
 })
 
 test('online update and disconnect panels share action-first manual-command layout', () => {
@@ -130,10 +139,10 @@ test('machine headings and hit targets belong to a summary independent of full-w
   const row = source.slice(source.indexOf('function MachineRow('), source.indexOf('export default function App'))
   assert.match(row, /<article className="cn-host">\s*<div className="cn-host-summary">/)
   assert.match(row, /aria-controls=\{`cn-details-\$\{host.id\}`\}/)
-  assert.match(row, /<div className="cn-host-details" id=\{`cn-details-\$\{host.id\}`\}>[\s\S]*<DisconnectPanel[\s\S]*<CommandPanel[\s\S]*<FinishedOutput[\s\S]*<UpdatePanel/)
+  assert.match(row, /<div className="cn-host-details" id=\{`cn-details-\$\{host.id\}`\} hidden=\{!expanded\}>[\s\S]*<CommandPanel[\s\S]*<FinishedOutput[\s\S]*Manage machine[\s\S]*<UpdatePanel[\s\S]*<DisconnectPanel/)
   assert.match(source, /\.cn-host-toggle\s*\{[^}]*inset:\s*0;[^}]*height:\s*100%;/s)
-  assert.match(source, /\.cn-host-details:empty\s*\{\s*display:\s*none;/)
-  assert.doesNotMatch(source, /height:\s*71px|grid-column:\s*2\s*\/\s*-1|\.cn-command \+ \.cn-command/)
+  assert.match(source, /\.cn-host-details\[hidden\]\s*\{\s*display:\s*none;/)
+  assert.doesNotMatch(source, /height:\s*71px|\.cn-command \+ \.cn-command/)
 })
 
 test('command sections use spacing without extra internal horizontal dividers', () => {
@@ -199,4 +208,31 @@ test('output selection survives recent-list rollover with its own command and cu
   assert.match(output, /commands\.find\(item => item\.id === selectedCommand\.id\) \|\| selectedCommand/)
   assert.match(output, /setSelectedCommand\(item\)[\s\S]*setCursor\(0\)[\s\S]*setPrevious\(\[\]\)/)
   assert.doesNotMatch(output, /\|\| commands\[0\]|Page \{previous\.length/)
+})
+
+
+test('compact summaries keep activity separate from management without resetting retained output', () => {
+  const row = source.slice(source.indexOf('function MachineRow('), source.indexOf('export default function App'))
+  const summary = row.slice(row.indexOf('return <article'), row.indexOf('className="cn-host-details"'))
+  assert.doesNotMatch(summary, /cn-rename|onRenameStart|DisconnectPanel|UpdatePanel/)
+  assert.match(summary, /aria-expanded=\{expanded\}/)
+  assert.match(row, /hidden=\{!expanded\}/)
+  assert.doesNotMatch(row, /expanded && host.recent_commands|!host.busy.*cn-toggle-mark/)
+  assert.match(row, /<details className="cn-manage">\s*<summary>Manage machine<\/summary>/)
+  assert.match(source, /onStopConfirm=\{command => \{\s*setExpandedId\(host.id\)/)
+  assert.match(source, /onUpdate=\{\(\) => \{\s*setExpandedId\(host.id\)/)
+})
+
+test('shared access places permissions and revocation behind access details', () => {
+  const outbound = source.slice(source.indexOf('function OutboundAccess('), source.indexOf('function CommandPanel('))
+  assert.match(outbound, /<summary>Access details<\/summary>[\s\S]*cn-agent-toggle[\s\S]*Revoke access/)
+  assert.doesNotMatch(outbound, /can’t answer your approvals/)
+})
+
+
+test('busy refreshes preserve the expanded activity and defer disconnect', () => {
+  const app = source.slice(source.indexOf('export default function App'))
+  assert.doesNotMatch(app, /\bconfirmingId\b(?![=])/)
+  assert.doesNotMatch(app, /host.id === expandedId && host.busy/)
+  assert.match(source, /<DisconnectPanel[\s\S]*?stale=\{stale \|\| host.busy\}/)
 })

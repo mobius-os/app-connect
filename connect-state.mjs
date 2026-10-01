@@ -7,13 +7,18 @@ export function activeCommands(host) {
   return host?.active_command ? [host.active_command] : []
 }
 
+export function platformLabel(platform) {
+  if (!platform) return ''
+  if (/^(darwin|macos|mac os)/i.test(platform)) return 'macOS'
+  if (/^windows/i.test(platform)) return 'Windows'
+  if (/^linux/i.test(platform)) return 'Linux'
+  return platform
+}
+
 export function statusOf(host) {
   const running = activeCommands(host).length
   if (running > 1) return { cls: 'busy', label: `Working · ${running}` }
   if (running || host?.busy) return { cls: 'busy', label: 'Working' }
-  if (host?.online && host?.runner_update_available) {
-    return { cls: 'wait', label: 'Update needed' }
-  }
   if (host?.online) return { cls: 'on', label: 'Online' }
   if (host?.paired) return { cls: 'off', label: 'Offline' }
   return { cls: 'wait', label: 'Waiting to pair' }

@@ -11,6 +11,7 @@ import {
   outputPath,
   runnerUpdateFeedback,
   statusOf,
+  platformLabel,
 } from './connect-state.mjs'
 
 test('busy is distinct from online and takes precedence over an update', () => {
@@ -172,4 +173,15 @@ test('a connected current runner does not conceal a failed, canceled, expired or
 test('an update result from another machine cannot confirm this one', () => {
   assert.equal(runnerUpdateFeedback({ ...currentRunner, id: 'h_other' }, lostUpdate), null)
   assert.equal(runnerUpdateFeedback(currentRunner, null), null)
+})
+
+
+test('compact platform names preserve unknown systems rather than inventing a family', () => {
+  for (const [input, expected] of [['Darwin-24-arm64', 'macOS'], ['Linux-6.8-x86_64', 'Linux'], ['Windows-11', 'Windows'], ['FreeBSD 14', 'FreeBSD 14'], [null, '']]) {
+    assert.equal(platformLabel(input), expected)
+  }
+})
+
+test('update availability does not hide whether an idle machine is online', () => {
+  assert.equal(statusOf({ online: true, runner_update_available: true }).label, 'Online')
 })

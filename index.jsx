@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { Check, Copy, Desktop, Pencil, Plus } from '@openai/apps-sdk-ui/components/Icon'
+import { Check, ChevronDown, Copy, Desktop, Pencil, Plus } from '@openai/apps-sdk-ui/components/Icon'
 import {
   activeCommands,
   appendTail,
@@ -10,6 +10,7 @@ import {
   outputPath,
   runnerUpdateFeedback,
   statusOf,
+  platformLabel,
 } from './connect-state.mjs'
 import { loadConnectionList, responseError, responseErrorData } from './connect-api.mjs'
 
@@ -38,8 +39,8 @@ const CSS = `
   .cn-section-head { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin: 0 0 14px; }
   .cn-section-heading { display: flex; align-items: center; min-width: 0; gap: 9px; }
   .cn-secttitle { margin: 0; color: var(--text); font-size: 15px; font-weight: 710; letter-spacing: -.01em; }
-  .cn-count { min-width: 22px; height: 22px; display: inline-grid; place-items: center; padding: 0 7px; border-radius: 999px; color: var(--muted); background: var(--surface-2); font-size: 11px; font-weight: 680; font-variant-numeric: tabular-nums; }
-  .cn-list { position: relative; overflow: visible; border: 1px solid var(--border); border-radius: 15px; background: var(--surface); }
+  .cn-count { color: var(--muted); font-size: 11px; font-weight: 680; font-variant-numeric: tabular-nums; }
+  .cn-list { position: relative; overflow: visible; border-top: 1px solid var(--border); }
   .cn-empty-row { min-height: 76px; display: flex; align-items: center; justify-content: center; border: 1px dashed color-mix(in srgb, var(--border) 85%, transparent); border-radius: 15px; color: var(--muted); font-size: 13px; }
 
   .cn-field { min-width: 0; }
@@ -47,16 +48,16 @@ const CSS = `
   .cn-input { width: 100%; height: 46px; padding: 0 13px; border: 1px solid var(--border); border-radius: 11px; color: var(--text); background: var(--bg); caret-color: var(--cn-violet); font: 14px var(--font); }
   .cn-input::placeholder { color: color-mix(in srgb, var(--muted) 78%, transparent); }
   .cn-input:focus { outline: 2px solid color-mix(in srgb, var(--cn-violet) 58%, transparent); outline-offset: 1px; border-color: var(--cn-violet); }
-  .cn-btn { min-height: 42px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; padding: 0 15px; border: 1px solid transparent; border-radius: 11px; background: var(--cn-violet); color: #fff; font: 650 13px var(--font); cursor: pointer; white-space: nowrap; transition: background 160ms ease-out, transform 160ms ease-out; }
+  .cn-btn { min-height: 44px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; padding: 0 15px; border: 1px solid transparent; border-radius: 11px; background: var(--cn-violet); color: #fff; font: 650 13px var(--font); cursor: pointer; white-space: nowrap; transition: background 160ms ease-out, transform 160ms ease-out; }
   .cn-btn:hover:not(:disabled) { background: color-mix(in srgb, var(--cn-violet) 88%, white); }
   .cn-btn:active:not(:disabled) { transform: scale(.98); }
   .cn-btn:disabled { opacity: .48; cursor: default; }
-  .cn-btn:focus-visible, .cn-host-edit:focus-visible, .cn-host-toggle:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
+  .cn-btn:focus-visible, .cn-host-toggle:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
   .cn-btn-ghost { color: var(--text); background: transparent; border-color: var(--border); }
   .cn-btn-ghost:hover:not(:disabled) { background: var(--surface-2); }
   .cn-btn-danger { color: #fff; background: #c9363e; }
   .cn-btn-danger:hover:not(:disabled) { background: #d6464e; }
-  .cn-btn-sm { min-height: 40px; padding: 0 13px; font-size: 12.5px; }
+  .cn-btn-sm { min-height: 44px; padding: 0 13px; font-size: 12.5px; }
 
   .cn-inline-form { margin: 0 0 14px; padding: 16px; border: 1px solid var(--border); border-radius: 14px; background: var(--surface); }
   .cn-machine-form { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: end; }
@@ -68,13 +69,13 @@ const CSS = `
   .cn-agent-choice { display: flex; align-items: flex-start; gap: 9px; margin-top: 13px; font-size: 13px; line-height: 1.4; cursor: pointer; }
   .cn-agent-choice input, .cn-agent-toggle input { width: 16px; height: 16px; margin: 2px 0 0; accent-color: var(--cn-violet); flex: none; }
   .cn-agent-choice small { display: block; color: var(--muted); font-size: 11.5px; }
-  .cn-agent-toggle { min-height: 40px; display: inline-flex; align-items: center; gap: 8px; flex: none; padding: 0 13px; border: 1px solid var(--border); border-radius: 11px; color: var(--muted); font: 650 12.5px var(--font); white-space: nowrap; cursor: pointer; transition: background 160ms ease-out, color 160ms ease-out; }
+  .cn-agent-toggle { min-height: 44px; display: inline-flex; align-items: center; gap: 8px; flex: none; padding: 0 13px; border: 1px solid var(--border); border-radius: 11px; color: var(--muted); font: 650 12.5px var(--font); white-space: nowrap; cursor: pointer; transition: background 160ms ease-out, color 160ms ease-out; }
   .cn-agent-toggle:hover { background: var(--surface-2); }
   .cn-agent-toggle.is-on { color: var(--text); border-color: color-mix(in srgb, var(--cn-violet) 45%, var(--border)); background: color-mix(in srgb, var(--cn-violet) 10%, transparent); }
   .cn-agent-toggle:focus-within { outline: 2px solid var(--text); outline-offset: 2px; }
   .cn-agent-toggle input { margin: 0; }
   .cn-agent-toggle input:focus-visible { outline: none; }
-  .cn-outbound-actions { grid-column: 3; grid-row: 1; display: flex; align-items: center; gap: 8px; }
+  .cn-outbound-actions { display: flex; align-items: center; gap: 8px; }
 
   .cn-message { margin: 0 0 16px; padding: 12px 14px; border-radius: 12px; font-size: 13px; line-height: 1.45; }
   .cn-error { color: #ffb7ba; background: color-mix(in srgb, #e5484d 12%, var(--surface)); border: 1px solid color-mix(in srgb, #e5484d 34%, var(--border)); }
@@ -83,45 +84,45 @@ const CSS = `
   .cn-loading { padding: 50px 0; color: var(--muted); font-size: 13px; text-align: center; }
 
   .cn-host { border-bottom: 1px solid var(--border); }
-  .cn-host-summary, .cn-outbound { position: relative; min-height: 72px; display: grid; grid-template-columns: 38px minmax(0, 1fr) auto; align-items: center; column-gap: 13px; row-gap: 8px; padding: 13px 15px; }
+  .cn-host-summary, .cn-outbound { position: relative; min-height: 72px; display: grid; grid-template-columns: 24px minmax(0, 1fr) auto; align-items: center; column-gap: 12px; row-gap: 8px; padding: 14px 0; }
   .cn-outbound { border-bottom: 1px solid var(--border); }
-  .cn-host:last-child, .cn-outbound:last-child { border-bottom: 0; }
-  .cn-host:first-child .cn-host-toggle { border-top-left-radius: 14px; border-top-right-radius: 14px; }
-  .cn-host:last-child .cn-host-toggle { border-bottom-left-radius: 14px; border-bottom-right-radius: 14px; }
   .cn-host-toggle { position: absolute; z-index: 0; inset: 0; width: 100%; height: 100%; border: 0; border-radius: 0; background: transparent; cursor: pointer; }
   .cn-host-toggle:hover:not(:disabled) { background: color-mix(in srgb, var(--surface-2) 48%, transparent); }
   .cn-host-toggle:disabled { cursor: default; }
-  .cn-host-symbol { position: relative; z-index: 1; pointer-events: none; grid-column: 1; grid-row: 1; width: 38px; height: 38px; display: grid; place-items: center; border-radius: 11px; color: var(--muted); background: var(--surface-2); }
-  .cn-host-symbol.on { color: #36b999; background: color-mix(in srgb, var(--cn-mint) 13%, var(--surface-2)); }
+  .cn-host-symbol { position: relative; z-index: 1; pointer-events: none; grid-column: 1; grid-row: 1; width: 24px; display: grid; place-items: center; color: var(--muted); }
+  .cn-host-status { position: relative; z-index: 1; pointer-events: none; display: flex; align-items: center; gap: 8px; }
   .cn-host-body, .cn-outbound-copy { position: relative; z-index: 1; grid-column: 2; grid-row: 1; min-width: 0; }
   .cn-host-body { pointer-events: none; }
-  .cn-host-body button, .cn-host-body input { pointer-events: auto; }
   .cn-host-top { display: flex; align-items: center; min-width: 0; gap: 8px; }
-  .cn-host-name { max-width: min(100%, 44ch); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); font-size: 14px; font-weight: 650; }
-  .cn-host-edit { pointer-events: auto; flex: none; width: 44px; height: 44px; display: inline-grid; place-items: center; margin: -12px -8px; padding: 0; border: 0; border-radius: 9px; color: var(--muted); background: transparent; cursor: pointer; }
-  .cn-host-edit:hover:not(:disabled) { color: var(--text); background: var(--surface-2); }
-  .cn-host-edit:disabled { opacity: .48; cursor: default; }
+  .cn-host-name { display: block; max-width: min(100%, 44ch); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); font-size: 14px; font-weight: 650; }
   .cn-outbound-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); font-size: 14px; font-weight: 650; }
   .cn-host-meta, .cn-outbound-meta { display: block; margin-top: 4px; color: var(--muted); font-size: 11.5px; }
-  .cn-pill { display: inline-flex; align-items: center; gap: 5px; padding: 3px 7px; border-radius: 999px; color: var(--muted); background: var(--surface-2); font-size: 10.5px; font-weight: 680; }
+  .cn-pill { display: inline-flex; align-items: center; gap: 5px; padding: 0; color: var(--muted); font-size: 11px; font-weight: 680; }
   .cn-pill-dot { position: relative; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
-  .cn-pill.on { color: #36b999; background: color-mix(in srgb, var(--cn-mint) 12%, var(--surface-2)); }
-  .cn-pill.wait { color: #d7a848; background: color-mix(in srgb, #d7a848 11%, var(--surface-2)); }
-  .cn-pill.busy { color: #a99afc; background: color-mix(in srgb, var(--cn-violet) 14%, var(--surface-2)); }
-  .cn-pill.on .cn-pill-dot::after, .cn-pill.busy .cn-pill-dot::after { content: ''; position: absolute; inset: -3px; border: 1px solid currentColor; border-radius: 50%; animation: cn-pulse 1.8s ease-out infinite; }
+  .cn-pill.on { color: #36b999; }
+  .cn-pill.wait { color: #d7a848; }
+  .cn-pill.busy { color: #a99afc; }
   .cn-toggle-mark { position: relative; z-index: 1; pointer-events: none; flex: none; width: 28px; height: 28px; display: grid; place-items: center; color: var(--muted); transition: transform 160ms ease-out; }
   .cn-toggle-mark.is-open { transform: rotate(180deg); }
-  .cn-toggle-mark svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 
-  .cn-host-details:empty { display: none; }
-  .cn-disconnect, .cn-command, .cn-update, .cn-finished { min-width: 0; margin: 0; padding: 14px 15px; }
+  .cn-host-details[hidden] { display: none; }
+  .cn-host-details { padding: 0 0 16px 36px; }
+  .cn-activity-empty { margin: 0; padding: 12px 0; color: var(--muted); font-size: 12px; }
+  .cn-manage { margin-top: 8px; }
+  .cn-manage > summary { width: fit-content; min-height: 44px; align-content: center; color: var(--muted); font-size: 12px; cursor: pointer; }
+  .cn-manage > summary:hover { color: var(--text); }
+  .cn-manage > summary:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
+  .cn-manage-content { padding: 8px 0; }
+  .cn-outbound .cn-manage { grid-column: 2 / -1; margin-top: 0; }
+  .cn-outbound .cn-host-top { justify-content: space-between; flex-wrap: wrap; }
+  .cn-disconnect, .cn-command, .cn-update, .cn-finished { min-width: 0; margin: 0; padding: 12px 0; }
   .cn-disconnect-title, .cn-command-title, .cn-update-title { margin: 0 0 4px; font-size: 13px; font-weight: 680; }
   .cn-disconnect-copy, .cn-command-meta, .cn-update-copy { margin: 0 0 10px; color: var(--muted); font-size: 12px; line-height: 1.45; }
   .cn-disconnect-actions { display: flex; align-items: center; justify-content: flex-start; gap: 8px; }
   .cn-disconnect-alt, .cn-update-manual { margin-top: 12px; }
   .cn-update-manual:first-child { margin-top: 0; }
   .cn-inline-confirm { width: 100%; display: flex; align-items: center; gap: 8px; }
-  .cn-inline-action { min-height: 40px; }
+  .cn-inline-action { min-height: 44px; }
   .cn-action-anchor { position: relative; z-index: 3; display: inline-flex; align-items: center; }
   .cn-action-popover { position: absolute; z-index: 30; top: calc(100% + 8px); left: 0; width: min(320px, calc(100vw - 32px)); padding: 14px; border: 1px solid var(--border); border-radius: 12px; color: var(--text); background: var(--surface); box-shadow: 0 12px 28px rgb(0 0 0 / 28%); }
   .cn-action-anchor.align-end .cn-action-popover { left: auto; right: 0; }
@@ -129,7 +130,6 @@ const CSS = `
   .cn-action-popover p { margin: 0 0 12px; color: var(--muted); font-size: 12px; line-height: 1.45; }
   .cn-action-popover-actions { display: flex; justify-content: flex-end; gap: 8px; }
   .cn-update-result { margin: 10px 0 0; }
-  .cn-update-result.is-success { color: #36b999; }
   .cn-update-result.is-waiting { color: #d7a848; }
   .cn-update-result.is-error { color: #ffb7ba; }
   .cn-disconnect-alt-title, .cn-update-manual-title { margin: 0 0 9px; font-size: 12px; font-weight: 680; }
@@ -167,8 +167,7 @@ const CSS = `
   .cn-rename-actions { display: flex; gap: 8px; flex: none; }
   .cn-rename-error { flex-basis: 100%; margin: 0; color: #ffb7ba; font-size: 11.5px; line-height: 1.35; }
 
-  @keyframes cn-pulse { from { transform: scale(.7); opacity: .72; } to { transform: scale(1.9); opacity: 0; } }
-  @media (prefers-reduced-motion: reduce) { .cn-pill-dot::after { animation: none !important; } .cn-btn, .cn-toggle-mark, .cn-agent-toggle { transition: none; } }
+  @media (prefers-reduced-motion: reduce) { .cn-btn, .cn-toggle-mark, .cn-agent-toggle { transition: none; } }
   @media (max-width: 560px) {
     .cn-head-inner { padding-left: 14px; padding-right: 14px; }
     .cn-head-inner::after { left: 14px; right: 14px; }
@@ -181,10 +180,10 @@ const CSS = `
     .cn-machine-form > .cn-btn { width: 100%; }
     .cn-form-footer { align-items: stretch; flex-direction: column; gap: 10px; }
     .cn-form-footer .cn-btn { width: 100%; }
-    .cn-host-summary, .cn-outbound { grid-template-columns: 38px minmax(0, 1fr); column-gap: 10px; padding-left: 12px; padding-right: 12px; }
-    .cn-host-summary .cn-toggle-mark { position: absolute; top: 21px; right: 12px; }
-    .cn-host .cn-host-body { grid-column: 2; padding-right: 30px; }
-    .cn-disconnect, .cn-command, .cn-update, .cn-finished { padding-left: 12px; padding-right: 12px; }
+    .cn-host-summary, .cn-outbound { column-gap: 10px; }
+    .cn-host-details { padding-left: 0; }
+    .cn-host-status { gap: 4px; }
+    .cn-toggle-mark { width: 20px; }
     .cn-command-row { align-items: stretch; flex-direction: column; }
     .cn-command-row .cn-action-anchor, .cn-command-row .cn-btn { width: 100%; }
     .cn-disconnect-actions { align-items: stretch; flex-direction: column-reverse; }
@@ -192,7 +191,7 @@ const CSS = `
     .cn-disconnect-actions .cn-action-anchor > .cn-btn { width: 100%; }
     .cn-action-popover-actions { align-items: stretch; flex-direction: column-reverse; }
     .cn-action-popover-actions .cn-btn { width: 100%; }
-    .cn-outbound-actions { grid-column: 2; grid-row: 2; }
+    .cn-outbound-actions { flex-wrap: wrap; }
     .cn-outbound .cn-action-anchor { flex: 1; }
     .cn-outbound .cn-action-anchor > .cn-btn { width: 100%; }
     .cn-action-popover { max-width: calc(100vw - 40px); }
@@ -441,7 +440,7 @@ function OutboundAccess({
       {agentSupported ? <label className="cn-agent-choice">
         <input type="checkbox" checked={agent} onChange={event => onAgent(event.target.checked)}/>
         <span>Full access
-          <small>It can also use this Möbius the way your chats’ agent does, but can’t answer your approvals.</small>
+          <small>It can also use this Möbius the way your chats’ agent does, with owner-level authority.</small>
         </span>
       </label> : null}
       <div className="cn-form-footer">
@@ -458,7 +457,7 @@ function OutboundAccess({
         const status = connection.online ? 'Service running' : (connection.status === 'ended' ? 'Ended' : 'Needs attention')
         const statusClass = connection.online ? 'on' : (connection.status === 'ended' ? '' : 'wait')
         return <article className={`cn-outbound${confirming ? ' is-confirming' : ''}`} key={connection.id}>
-          <div className={`cn-host-symbol${connection.online ? ' on' : ''}`} aria-hidden="true">
+          <div className="cn-host-symbol" aria-hidden="true">
             <Desktop size={20}/>
           </div>
           <div className="cn-outbound-copy">
@@ -468,34 +467,37 @@ function OutboundAccess({
             </div>
             <span className="cn-outbound-meta">{connection.target}</span>
           </div>
-          <div className="cn-outbound-actions">
-            {agentSupported && connection.status === 'active' ? <label
-              className={`cn-agent-toggle${connection.agent ? ' is-on' : ''}`}
-              title="Also lets it use this Möbius the way your chats’ agent does. It can’t answer your approvals."
-            >
-              <input
-                type="checkbox"
-                checked={connection.agent}
-                disabled={stale || agentBusyId === connection.id}
-                onChange={event => onToggleAgent(connection, event.target.checked)}
-              />Full access
-            </label> : null}
-            <ActionConfirm
-              id={`cn-revoke-${connection.id}`}
-              open={confirming}
-              title={`Revoke access for ${connection.label}?`}
-              description="This machine will no longer be able to run commands through this Möbius."
-              triggerLabel={connection.online ? 'Revoke' : 'Remove'}
-              confirmLabel={connection.online ? 'Revoke access' : 'Remove access'}
-              confirmingLabel={connection.online ? 'Revoking…' : 'Removing…'}
-              onOpen={() => onConfirm(connection.id)}
-              onCancel={onKeep}
-              onConfirm={() => onRevoke(connection)}
-              disabled={stale || revokingId === connection.id}
-              confirming={revokingId === connection.id}
-              align="end"
-            />
-          </div>
+          <details className="cn-manage">
+            <summary>Access details</summary>
+            <div className="cn-outbound-actions">
+              {agentSupported && connection.status === 'active' ? <label
+                className={`cn-agent-toggle${connection.agent ? ' is-on' : ''}`}
+                title="Also lets it use this Möbius the way your chats’ agent does. This is owner-level authority."
+              >
+                <input
+                  type="checkbox"
+                  checked={connection.agent}
+                  disabled={stale || agentBusyId === connection.id}
+                  onChange={event => onToggleAgent(connection, event.target.checked)}
+                />Full access
+              </label> : null}
+              <ActionConfirm
+                id={`cn-revoke-${connection.id}`}
+                open={confirming}
+                title={`Revoke access for ${connection.label}?`}
+                description="This machine will no longer be able to run commands through this Möbius."
+                triggerLabel={connection.online ? 'Revoke' : 'Remove'}
+                confirmLabel={connection.online ? 'Revoke access' : 'Remove access'}
+                confirmingLabel={connection.online ? 'Revoking…' : 'Removing…'}
+                onOpen={() => onConfirm(connection.id)}
+                onCancel={onKeep}
+                onConfirm={() => onRevoke(connection)}
+                disabled={stale || revokingId === connection.id}
+                confirming={revokingId === connection.id}
+                align="end"
+              />
+            </div>
+          </details>
         </article>
       })}
     </div> : <div className="cn-empty-row">No machines have access.</div>}
@@ -665,6 +667,7 @@ function UpdatePanel({
   const currentResult = result?.hostId === host.id ? result : null
   const updated = !host.runner_update_available
   const feedback = runnerUpdateFeedback(host, currentResult, stale)
+  if (!updating && feedback?.tone === 'success') return null
   const retry = feedback?.retry
   return <div className="cn-update">
     {!updated && !host.busy && !updating && host.online ? <InlineActionConfirm
@@ -700,8 +703,8 @@ function UpdatePanel({
 }
 
 function MachineRow({
-  host, confirming, deleting, removeConfirming, renaming, renameValue, renameError, saving,
-  copiedKey, failedKey, onCopy, onConfirm, onPair, onRemove, onSelect,
+  host, expanded, deleting, removeConfirming, renaming, renameValue, renameError, saving,
+  copiedKey, failedKey, onCopy, onExpand, onPair, onRemove, onSelect,
   onRenameStart, onRenameChange, onRenameSave, onRenameCancel,
   tails, stopConfirmingId, stoppingId, onStopConfirm, onStopKeep, onStop,
   onRemoveConfirm, onRemoveCancel,
@@ -711,94 +714,36 @@ function MachineRow({
   const status = statusOf(host)
   const commands = activeCommands(host)
   const meta = [
-    host.platform,
+    platformLabel(host.platform),
+    host.runner_update_available ? 'Update needed' : null,
     !host.online && host.paired && host.last_seen ? `Last seen ${relTime(host.last_seen)}` : null,
   ].filter(Boolean).join(' · ')
-  const expanded = confirming || renaming
 
   return <article className="cn-host">
     <div className="cn-host-summary">
       <button
         className="cn-host-toggle"
-        onClick={onConfirm}
-        disabled={renaming}
-        aria-expanded={confirming}
+        onClick={onExpand}
+        disabled={renaming || saving}
+        aria-expanded={expanded}
         aria-controls={`cn-details-${host.id}`}
-        aria-label={`${confirming ? 'Hide' : 'Show'} details for ${host.name}`}
+        aria-label={`${expanded ? 'Hide' : 'Show'} details for ${host.name}`}
       />
-      <div className={`cn-host-symbol${host.online ? ' on' : ''}`} aria-hidden="true">
-        <Desktop size={20}/>
-      </div>
+      <div className="cn-host-symbol" aria-hidden="true"><Desktop size={20}/></div>
       <div className="cn-host-body">
-        {renaming ? <div className="cn-rename">
-          <input
-            className="cn-input"
-            value={renameValue}
-            maxLength={80}
-            autoFocus
-            aria-label={`Rename ${host.name}`}
-            aria-invalid={Boolean(renameError)}
-            aria-describedby={renameError ? `rename-error-${host.id}` : undefined}
-            onChange={event => onRenameChange(event.target.value)}
-            onKeyDown={event => {
-              if (event.key === 'Enter') {
-                event.preventDefault()
-                if (!saving && !stale) onRenameSave()
-              } else if (event.key === 'Escape' && !saving) {
-                onRenameCancel()
-              }
-            }}
-          />
-          <div className="cn-rename-actions">
-            <button className="cn-btn cn-btn-ghost cn-btn-sm" onClick={onRenameCancel} disabled={saving}>
-              Cancel
-            </button>
-            <button className="cn-btn cn-btn-sm" onClick={onRenameSave} disabled={saving || stale}>
-              {saving ? 'Saving…' : 'Save'}
-            </button>
-          </div>
-          {renameError ? <p className="cn-rename-error" id={`rename-error-${host.id}`} role="alert">
-            {renameError}
-          </p> : null}
-        </div> : <>
-          <div className="cn-host-top">
-            <span className="cn-host-name">{host.name}</span>
-            <button
-              type="button"
-              className="cn-host-edit"
-              onClick={onRenameStart}
-              aria-label={`Rename ${host.name}`}
-              title="Rename machine"
-              disabled={stale}
-            >
-              <Pencil size={15} aria-hidden="true"/>
-            </button>
-            <span className={`cn-pill ${status.cls}`} role="status">
-              <span className="cn-pill-dot" aria-hidden="true"/>{status.label}
-            </span>
-          </div>
-          {meta ? <div className="cn-host-meta">{meta}</div> : null}
-        </>}
+        <span className="cn-host-name" title={host.name}>{host.name}</span>
+        {meta ? <div className="cn-host-meta">{meta}</div> : null}
       </div>
-      {!host.busy ? <span className={`cn-toggle-mark${confirming ? ' is-open' : ''}`} aria-hidden="true">
-        <svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg>
-      </span> : null}
+      <div className="cn-host-status">
+        <span className={`cn-pill ${status.cls}`} role="status">
+          <span className="cn-pill-dot" aria-hidden="true"/>{status.label}
+        </span>
+        <span className={`cn-toggle-mark${expanded ? ' is-open' : ''}`} aria-hidden="true">
+          <ChevronDown size={16}/>
+        </span>
+      </div>
     </div>
-    <div className="cn-host-details" id={`cn-details-${host.id}`}>
-      {confirming ? <DisconnectPanel
-        host={host}
-        busy={deleting}
-        stale={stale}
-        confirmingRemove={removeConfirming}
-        copiedKey={copiedKey}
-        failedKey={failedKey}
-        onCopy={onCopy}
-        onPair={onPair}
-        onRemoveOpen={onRemoveConfirm}
-        onRemoveCancel={onRemoveCancel}
-        onRemove={onRemove}
-        onSelect={onSelect}
-      /> : null}
+    <div className="cn-host-details" id={`cn-details-${host.id}`} hidden={!expanded}>
       {commands.map(command => <CommandPanel
         key={command.id}
         host={host}
@@ -811,37 +756,82 @@ function MachineRow({
         onKeep={onStopKeep}
         onStop={() => onStop(command)}
       />)}
-      {confirming && host.recent_commands?.length ? <FinishedOutput
+      {host.recent_commands?.length ? <FinishedOutput
         key={host.id}
         host={host}
         commands={host.recent_commands.slice(0, 20)}
         headers={headers}
-      /> : null}
-      {host.runner_update_available && !host.busy && !expanded ? <UpdatePanel
-        host={host}
-        copiedKey={copiedKey}
-        failedKey={failedKey}
-        onCopy={onCopy}
-        onSelect={onSelect}
-        confirming={updateConfirming}
-        updating={updating}
-        result={updateResult}
-        stale={stale}
-        onUpdate={onUpdate}
-        onConfirm={onUpdateConfirm}
-        onCancel={onUpdateCancel}
-      /> : null}
-      {updateResult?.hostId === host.id && !host.runner_update_available && !host.busy ? <UpdatePanel
-        host={host}
-        copiedKey={copiedKey}
-        failedKey={failedKey}
-        onCopy={onCopy}
-        onSelect={onSelect}
-        confirming={false}
-        updating={updating}
-        result={updateResult}
-        stale={stale}
-      /> : null}
+      /> : !commands.length ? <p className="cn-activity-empty">No recent commands.</p> : null}
+      <details className="cn-manage">
+        <summary>Manage machine</summary>
+        <div className="cn-manage-content">
+          {renaming ? <div className="cn-rename">
+            <input
+              className="cn-input"
+              value={renameValue}
+              maxLength={80}
+              autoFocus
+              aria-label={`Rename ${host.name}`}
+              aria-invalid={Boolean(renameError)}
+              aria-describedby={renameError ? `rename-error-${host.id}` : undefined}
+              onChange={event => onRenameChange(event.target.value)}
+              onKeyDown={event => {
+                if (event.key === 'Enter') {
+                  event.preventDefault()
+                  if (!saving && !stale) onRenameSave()
+                } else if (event.key === 'Escape' && !saving) {
+                  onRenameCancel()
+                }
+              }}
+            />
+            <div className="cn-rename-actions">
+              <button className="cn-btn cn-btn-ghost cn-btn-sm" onClick={onRenameCancel} disabled={saving}>
+                Cancel
+              </button>
+              <button className="cn-btn cn-btn-sm" onClick={onRenameSave} disabled={saving || stale}>
+                {saving ? 'Saving…' : 'Save'}
+              </button>
+            </div>
+            {renameError ? <p className="cn-rename-error" id={`rename-error-${host.id}`} role="alert">
+              {renameError}
+            </p> : null}
+          </div> : <button
+            type="button"
+            className="cn-btn cn-btn-ghost cn-btn-sm"
+            onClick={onRenameStart}
+            aria-label={`Rename ${host.name}`}
+            disabled={stale}
+          ><Pencil size={15} aria-hidden="true"/>Rename</button>}
+          {host.runner_update_available || updateResult?.hostId === host.id || updating ? <UpdatePanel
+            host={host}
+            copiedKey={copiedKey}
+            failedKey={failedKey}
+            onCopy={onCopy}
+            onSelect={onSelect}
+            confirming={updateConfirming}
+            updating={updating}
+            result={updateResult}
+            stale={stale}
+            onUpdate={onUpdate}
+            onConfirm={onUpdateConfirm}
+            onCancel={onUpdateCancel}
+          /> : null}
+          <DisconnectPanel
+            host={host}
+            busy={deleting}
+            stale={stale || host.busy}
+            confirmingRemove={removeConfirming}
+            copiedKey={copiedKey}
+            failedKey={failedKey}
+            onCopy={onCopy}
+            onPair={onPair}
+            onRemoveOpen={onRemoveConfirm}
+            onRemoveCancel={onRemoveCancel}
+            onRemove={onRemove}
+            onSelect={onSelect}
+          />
+        </div>
+      </details>
     </div>
   </article>
 }
@@ -857,7 +847,7 @@ export default function App({ appId, token }) {
   const [newName, setNewName] = useState(DEFAULT_MACHINE_NAME)
   const [addingMachine, setAddingMachine] = useState(false)
   const [pairing, setPairing] = useState(null)
-  const [confirmingId, setConfirmingId] = useState(null)
+  const [expandedId, setExpandedId] = useState(null)
   const [confirmation, setConfirmation] = useState(null)
   const [renamingId, setRenamingId] = useState(null)
   const [renameValue, setRenameValue] = useState('')
@@ -1010,12 +1000,6 @@ export default function App({ appId, token }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [runningKey, headers, serviceStale])
 
-  useEffect(() => {
-    if (confirmingId && hosts.some(host => (
-      host.id === confirmingId && host.busy
-    ))) setConfirmingId(null)
-  }, [hosts, confirmingId])
-
   const addMachine = useCallback(async () => {
     if (creating || serviceStale) return
     setCreating(true)
@@ -1058,7 +1042,7 @@ export default function App({ appId, token }) {
   }, [headers, serviceStale])
 
   const removeMachine = useCallback(async (host) => {
-    if (deletingId || serviceStale) return
+    if (deletingId || serviceStale || host.busy) return
     setDeletingId(host.id)
     setError(null)
     try {
@@ -1072,7 +1056,7 @@ export default function App({ appId, token }) {
       }
       if (pairing?.id === host.id) setPairing(null)
       setHosts(current => current.filter(item => item.id !== host.id))
-      setConfirmingId(null)
+      setExpandedId(null)
       setConfirmation(null)
       window.mobius.signal('item_deleted')
       await load()
@@ -1331,7 +1315,7 @@ export default function App({ appId, token }) {
             host={host}
             headers={headers}
             stale={serviceStale}
-            confirming={confirmingId === host.id}
+            expanded={expandedId === host.id}
             deleting={deletingId === host.id}
             removeConfirming={confirmation?.kind === 'remove' && confirmation.id === host.id}
             renaming={renamingId === host.id}
@@ -1344,10 +1328,10 @@ export default function App({ appId, token }) {
             copiedKey={copiedKey}
             failedKey={failedKey}
             onCopy={copy}
-            onConfirm={() => {
+            onExpand={() => {
               setConfirmation(null)
               setRenamingId(null)
-              setConfirmingId(current => current === host.id ? null : host.id)
+              setExpandedId(current => current === host.id ? null : host.id)
             }}
             onPair={() => showCommand(host.id)}
             onRemove={() => removeMachine(host)}
@@ -1356,7 +1340,7 @@ export default function App({ appId, token }) {
             onSelect={selectCommand}
             onRenameStart={() => {
               setConfirmation(null)
-              setConfirmingId(null)
+              setExpandedId(host.id)
               startRename(host)
             }}
             onRenameChange={value => {
@@ -1366,7 +1350,7 @@ export default function App({ appId, token }) {
             onRenameSave={() => saveRename(host)}
             onRenameCancel={cancelRename}
             onStopConfirm={command => {
-              setConfirmingId(null)
+              setExpandedId(host.id)
               setRenamingId(null)
               setConfirmation({ kind: 'stop', id: command.id })
             }}
@@ -1376,7 +1360,7 @@ export default function App({ appId, token }) {
             updating={updatingId === host.id}
             updateResult={updateResult}
             onUpdate={() => {
-              setConfirmingId(null)
+              setExpandedId(host.id)
               setRenamingId(null)
               setConfirmation({ kind: 'update', id: host.id })
             }}

@@ -1,5 +1,30 @@
 # Connect
 
+## Trusted browser access
+
+On a platform version that supports browser sharing, Connect can invite a
+trusted person into the same chats, apps and data, with independent navigation.
+Access lasts until revoked. Recipient labels are assigned by the owner, not
+verified account identities. Deliver each one-use invitation privately; the
+link expires after one day. A new invitation can sign in another browser
+without ending existing sessions.
+
+This requires a directly reachable HTTPS instance. It is not screen sharing,
+a private-network tunnel, or isolated accounts. Guests can take powerful
+workspace actions. Revocation ends access but cannot undo copied data or past
+changes; a remote command may still be stopping until its machine confirms it.
+
+## Tests
+
+With Node.js 20+ and Python 3 installed, run `npm ci` to install the pinned,
+test-only JavaScript dependencies. Install Playwright's Chromium once with
+`npx playwright install chromium`, then run `npm test` and
+`python3 -m unittest test_mach.py`. The browser-access tests use an isolated,
+intercepted fixture and never contact a live Connect service. If Chromium is
+already installed outside Playwright's browser cache, set
+`CONNECT_TEST_BROWSER_EXECUTABLE=/path/to/chrome` when running `npm test`.
+Without that override, the tests use Playwright's Chromium.
+
 Pair an external machine — your laptop, a workstation, or an HPC login node —
 with this Möbius instance, so the in-product agent can run things on it from any
 device.

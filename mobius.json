@@ -25,6 +25,7 @@
     "connect.md",
     "mach",
     "connect-state.mjs",
-    "connect-api.mjs"
+    "connect-api.mjs",
+    "BrowserAccessSection.jsx"
   ]
 }

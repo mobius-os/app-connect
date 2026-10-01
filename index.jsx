@@ -35,8 +35,8 @@ const CSS = `
   .cn-sub { margin: 4px 0 0; color: var(--muted); font-size: 11.5px; line-height: 1.2; }
   .cn-shell { width: min(728px, calc(100% - 32px)); margin: 0 auto; padding: 28px 0 64px; }
 
-  .cn-section { padding-top: 32px; margin-top: 34px; border-top: 1px solid var(--border); }
-  .cn-section-first { padding-top: 0; margin-top: 0; border-top: 0; }
+  .cn-section { padding-top: 32px; margin-top: 34px; }
+  .cn-section-first { padding-top: 0; margin-top: 0; }
   .cn-section-head { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin: 0 0 14px; }
   .cn-section-heading { display: flex; align-items: center; min-width: 0; gap: 9px; }
   .cn-secttitle { margin: 0; color: var(--text); font-size: 15px; font-weight: 710; letter-spacing: -.01em; }
@@ -95,7 +95,8 @@ const CSS = `
   .cn-host-body, .cn-outbound-copy { position: relative; z-index: 1; grid-column: 2; grid-row: 1; min-width: 0; }
   .cn-host-body { pointer-events: none; }
   .cn-host-top { display: flex; align-items: center; min-width: 0; gap: 8px; }
-  .cn-host-name { display: block; max-width: min(100%, 44ch); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); font-size: 14px; font-weight: 650; }
+  .cn-name-edit { pointer-events: auto; flex: none; width: 44px; height: 44px; min-height: 44px; padding: 0; margin: -10px 0; border-radius: 8px; }
+  .cn-host-name { display: block; min-width: 0; max-width: min(100%, 44ch); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); font-size: 14px; font-weight: 650; }
   .cn-outbound-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); font-size: 14px; font-weight: 650; }
   .cn-host-meta, .cn-outbound-meta { display: block; margin-top: 4px; color: var(--muted); font-size: 11.5px; }
   .cn-pill { display: inline-flex; align-items: center; gap: 5px; padding: 0; color: var(--muted); font-size: 11px; font-weight: 680; }
@@ -109,12 +110,8 @@ const CSS = `
   .cn-host-details[hidden] { display: none; }
   .cn-host-details { padding: 0 0 16px 36px; }
   .cn-activity-empty { margin: 0; padding: 12px 0; color: var(--muted); font-size: 12px; }
-  .cn-manage { margin-top: 8px; }
-  .cn-manage > summary { width: fit-content; min-height: 44px; align-content: center; color: var(--muted); font-size: 12px; cursor: pointer; }
-  .cn-manage > summary:hover { color: var(--text); }
-  .cn-manage > summary:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
-  .cn-manage-content { padding: 8px 0; }
-  .cn-outbound .cn-manage { grid-column: 2 / -1; margin-top: 0; }
+  .cn-outbound-actions { grid-column: 2 / -1; flex-wrap: wrap; }
+  .cn-outbound-actions .cn-inline-confirm { width: auto; flex: 1; min-width: 0; flex-wrap: wrap; }
   .cn-outbound .cn-host-top { justify-content: space-between; flex-wrap: wrap; }
   .cn-disconnect, .cn-command, .cn-update, .cn-finished { min-width: 0; margin: 0; padding: 12px 0; }
   .cn-disconnect-title, .cn-command-title, .cn-update-title { margin: 0 0 4px; font-size: 13px; font-weight: 680; }
@@ -210,8 +207,6 @@ const CSS = `
     .cn-action-popover-actions { align-items: stretch; flex-direction: column-reverse; }
     .cn-action-popover-actions .cn-btn { width: 100%; }
     .cn-outbound-actions { flex-wrap: wrap; }
-    .cn-outbound .cn-action-anchor { flex: 1; }
-    .cn-outbound .cn-action-anchor > .cn-btn { width: 100%; }
     .cn-action-popover { max-width: calc(100vw - 40px); }
     .cn-rename { flex-wrap: wrap; }
     .cn-rename .cn-input { flex-basis: 100%; }
@@ -490,37 +485,30 @@ function OutboundAccess({
             </div>
             <span className="cn-outbound-meta">{connection.target}</span>
           </div>
-          <details className="cn-manage">
-            <summary>Access details</summary>
-            <div className="cn-outbound-actions">
-              {agentSupported && connection.status === 'active' ? <label
-                className={`cn-agent-toggle${connection.agent ? ' is-on' : ''}`}
-                title="Also lets it use this Möbius the way your chats’ agent does. This is owner-level authority."
-              >
-                <input
-                  type="checkbox"
-                  checked={connection.agent}
-                  disabled={stale || agentBusyId === connection.id}
-                  onChange={event => onToggleAgent(connection, event.target.checked)}
-                />Full access
-              </label> : null}
-              <ActionConfirm
-                id={`cn-revoke-${connection.id}`}
-                open={confirming}
-                title={`Revoke access for ${connection.label}?`}
-                description="This machine will no longer be able to run commands through this Möbius."
-                triggerLabel={connection.online ? 'Revoke' : 'Remove'}
-                confirmLabel={connection.online ? 'Revoke access' : 'Remove access'}
-                confirmingLabel={connection.online ? 'Revoking…' : 'Removing…'}
-                onOpen={() => onConfirm(connection.id)}
-                onCancel={onKeep}
-                onConfirm={() => onRevoke(connection)}
-                disabled={stale || revokingId === connection.id}
-                confirming={revokingId === connection.id}
-                align="end"
-              />
-            </div>
-          </details>
+          <div className="cn-outbound-actions">
+            {agentSupported && connection.status === 'active' ? <label
+              className={`cn-agent-toggle${connection.agent ? ' is-on' : ''}`}
+              title="Also lets it use this Möbius the way your chats’ agent does. This is owner-level authority."
+            >
+              <input
+                type="checkbox"
+                checked={connection.agent}
+                disabled={stale || agentBusyId === connection.id}
+                onChange={event => onToggleAgent(connection, event.target.checked)}
+              />Full access
+            </label> : null}
+            <InlineActionConfirm
+              open={confirming}
+              triggerLabel={connection.online ? 'Revoke access' : 'Remove access'}
+              confirmLabel={connection.online ? 'Confirm revoke' : 'Confirm remove'}
+              confirmingLabel={connection.online ? 'Revoking…' : 'Removing…'}
+              onOpen={() => onConfirm(connection.id)}
+              onCancel={onKeep}
+              onConfirm={() => onRevoke(connection)}
+              disabled={stale || revokingId === connection.id}
+              confirming={revokingId === connection.id}
+            />
+          </div>
         </article>
       })}
     </div> : <div className="cn-empty-row">No machines have access.</div>}
@@ -754,7 +742,46 @@ function MachineRow({
       />
       <div className="cn-host-symbol" aria-hidden="true"><Desktop size={20}/></div>
       <div className="cn-host-body">
-        <span className="cn-host-name" title={host.name}>{host.name}</span>
+        {renaming ? <div className="cn-rename">
+          <input
+            className="cn-input"
+            value={renameValue}
+            maxLength={80}
+            autoFocus
+            aria-label={`Rename ${host.name}`}
+            aria-invalid={Boolean(renameError)}
+            aria-describedby={renameError ? `rename-error-${host.id}` : undefined}
+            onChange={event => onRenameChange(event.target.value)}
+            onKeyDown={event => {
+              if (event.key === 'Enter') {
+                event.preventDefault()
+                if (!saving && !stale) onRenameSave()
+              } else if (event.key === 'Escape' && !saving) {
+                onRenameCancel()
+              }
+            }}
+          />
+          <div className="cn-rename-actions">
+            <button className="cn-btn cn-btn-ghost cn-btn-sm" onClick={onRenameCancel} disabled={saving}>
+              Cancel
+            </button>
+            <button className="cn-btn cn-btn-sm" onClick={onRenameSave} disabled={saving || stale}>
+              {saving ? 'Saving…' : 'Save'}
+            </button>
+          </div>
+          {renameError ? <p className="cn-rename-error" id={`rename-error-${host.id}`} role="alert">
+            {renameError}
+          </p> : null}
+        </div> : <div className="cn-host-top">
+          <span className="cn-host-name" title={host.name}>{host.name}</span>
+          <button
+            type="button"
+            className="cn-btn cn-btn-ghost cn-name-edit"
+            onClick={onRenameStart}
+            aria-label={`Rename ${host.name}`}
+            disabled={stale}
+          ><Pencil size={15} aria-hidden="true"/></button>
+        </div>}
         {meta ? <div className="cn-host-meta">{meta}</div> : null}
       </div>
       <div className="cn-host-status">
@@ -785,76 +812,34 @@ function MachineRow({
         commands={host.recent_commands.slice(0, 20)}
         headers={headers}
       /> : !commands.length ? <p className="cn-activity-empty">No recent commands.</p> : null}
-      <details className="cn-manage">
-        <summary>Manage machine</summary>
-        <div className="cn-manage-content">
-          {renaming ? <div className="cn-rename">
-            <input
-              className="cn-input"
-              value={renameValue}
-              maxLength={80}
-              autoFocus
-              aria-label={`Rename ${host.name}`}
-              aria-invalid={Boolean(renameError)}
-              aria-describedby={renameError ? `rename-error-${host.id}` : undefined}
-              onChange={event => onRenameChange(event.target.value)}
-              onKeyDown={event => {
-                if (event.key === 'Enter') {
-                  event.preventDefault()
-                  if (!saving && !stale) onRenameSave()
-                } else if (event.key === 'Escape' && !saving) {
-                  onRenameCancel()
-                }
-              }}
-            />
-            <div className="cn-rename-actions">
-              <button className="cn-btn cn-btn-ghost cn-btn-sm" onClick={onRenameCancel} disabled={saving}>
-                Cancel
-              </button>
-              <button className="cn-btn cn-btn-sm" onClick={onRenameSave} disabled={saving || stale}>
-                {saving ? 'Saving…' : 'Save'}
-              </button>
-            </div>
-            {renameError ? <p className="cn-rename-error" id={`rename-error-${host.id}`} role="alert">
-              {renameError}
-            </p> : null}
-          </div> : <button
-            type="button"
-            className="cn-btn cn-btn-ghost cn-btn-sm"
-            onClick={onRenameStart}
-            aria-label={`Rename ${host.name}`}
-            disabled={stale}
-          ><Pencil size={15} aria-hidden="true"/>Rename</button>}
-          {host.runner_update_available || updateResult?.hostId === host.id || updating ? <UpdatePanel
-            host={host}
-            copiedKey={copiedKey}
-            failedKey={failedKey}
-            onCopy={onCopy}
-            onSelect={onSelect}
-            confirming={updateConfirming}
-            updating={updating}
-            result={updateResult}
-            stale={stale}
-            onUpdate={onUpdate}
-            onConfirm={onUpdateConfirm}
-            onCancel={onUpdateCancel}
-          /> : null}
-          <DisconnectPanel
-            host={host}
-            busy={deleting}
-            stale={stale || host.busy}
-            confirmingRemove={removeConfirming}
-            copiedKey={copiedKey}
-            failedKey={failedKey}
-            onCopy={onCopy}
-            onPair={onPair}
-            onRemoveOpen={onRemoveConfirm}
-            onRemoveCancel={onRemoveCancel}
-            onRemove={onRemove}
-            onSelect={onSelect}
-          />
-        </div>
-      </details>
+      {host.runner_update_available || updateResult?.hostId === host.id || updating ? <UpdatePanel
+        host={host}
+        copiedKey={copiedKey}
+        failedKey={failedKey}
+        onCopy={onCopy}
+        onSelect={onSelect}
+        confirming={updateConfirming}
+        updating={updating}
+        result={updateResult}
+        stale={stale}
+        onUpdate={onUpdate}
+        onConfirm={onUpdateConfirm}
+        onCancel={onUpdateCancel}
+      /> : null}
+      <DisconnectPanel
+        host={host}
+        busy={deleting}
+        stale={stale || host.busy}
+        confirmingRemove={removeConfirming}
+        copiedKey={copiedKey}
+        failedKey={failedKey}
+        onCopy={onCopy}
+        onPair={onPair}
+        onRemoveOpen={onRemoveConfirm}
+        onRemoveCancel={onRemoveCancel}
+        onRemove={onRemove}
+        onSelect={onSelect}
+      />
     </div>
   </article>
 }
@@ -1363,7 +1348,6 @@ export default function App({ appId, token }) {
             onSelect={selectCommand}
             onRenameStart={() => {
               setConfirmation(null)
-              setExpandedId(host.id)
               startRename(host)
             }}
             onRenameChange={value => {

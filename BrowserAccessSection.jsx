@@ -16,48 +16,89 @@ export function safeSharedOpenUrl(instance) {
   } catch { return null }
 }
 
-export function SharedWithMe({ headers }) {
+export function useSharedDirectory(headers) {
   const [state, setState] = useState('loading')
   const [instances, setInstances] = useState([])
+  const [actionId, setActionId] = useState(null)
+  const [actionError, setActionError] = useState(null)
+  const sequence = useRef(0)
+  const busy = useRef(false)
+  const load = useCallback(async () => {
+    if (busy.current) return
+    const request = ++sequence.current
+    try {
+      const response = await fetch(`${ENDPOINT}/shared`, { headers: headers() })
+      if (request !== sequence.current) return
+      if (response.status === 404) { setState('unavailable'); return }
+      if (response.status === 409) {
+        const detail = (await response.json())?.detail
+        if (detail !== 'Link your mobius.you account in Identity first.') throw new Error('conflict')
+        setInstances([])
+        setState('unlinked')
+        return
+      }
+      if (!response.ok) throw new Error('load')
+      const result = await response.json()
+      if (!Array.isArray(result?.instances)) throw new Error('shape')
+      if (request !== sequence.current) return
+      setInstances(result.instances)
+      setState('ready')
+      setActionError(null)
+    } catch { if (request === sequence.current) setState('error') }
+  }, [headers])
   useEffect(() => {
-    let active = true
-    const load = async () => {
-      try {
-        const response = await fetch(`${ENDPOINT}/shared`, { headers: headers() })
-        if (response.status === 404) { if (active) setState('unavailable'); return }
-        if (response.status === 409) {
-          const detail = (await response.json())?.detail
-          if (detail !== 'Link your mobius.you account in Identity first.') throw new Error('conflict')
-          if (active) { setInstances([]); setState('unlinked') }
-          return
-        }
-        if (!response.ok) throw new Error('load')
-        const result = await response.json()
-        if (!Array.isArray(result?.instances)) throw new Error('shape')
-        if (active) { setInstances(result.instances); setState('ready') }
-      } catch { if (active) setState('error') }
-    }
     load()
     const timer = setInterval(load, 5000)
-    return () => { active = false; clearInterval(timer) }
-  }, [headers])
+    return () => { clearInterval(timer); sequence.current += 1 }
+  }, [load])
+  const respond = async (instance, action) => {
+    if (state !== 'ready' || busy.current || instance.status !== 'invited' || (action === 'later' && !instance.unread)) return
+    busy.current = true
+    sequence.current += 1
+    setActionId(instance.grant_id)
+    setActionError(null)
+    try {
+      const response = await fetch(`${ENDPOINT}/shared/respond`, {
+        method: 'POST', headers: headers({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({ origin: instance.origin, grant_id: instance.grant_id, action }),
+      })
+      if (!response.ok) throw new Error('respond')
+      const result = await response.json()
+      if (!result?.instance || result.instance.grant_id !== instance.grant_id || result.instance.origin !== instance.origin) throw new Error('shape')
+      setInstances(current => current.map(item => item.grant_id === instance.grant_id && item.origin === instance.origin ? result.instance : item))
+    } catch { setActionError('Couldn’t confirm your response. Try again after the list refreshes.') }
+    finally { busy.current = false; setActionId(null); load() }
+  }
+  return { state, instances, actionId, actionError, respond }
+}
+
+export function SharedWithMe({ directory }) {
+  const { state, instances, actionId, actionError, respond } = directory
   if (state === 'unavailable') return null
   return <section className="cn-section cn-shared-with-me" aria-labelledby="cn-shared-title">
     <div className="cn-section-head"><div className="cn-section-heading"><h2 className="cn-secttitle" id="cn-shared-title">Shared with me</h2></div></div>
-    {state === 'loading' ? <p className="cn-browser-note" role="status">Loading shared instances…</p> : null}
-    {state === 'error' ? <p className="cn-browser-note" role="status">Couldn’t refresh shared instances. Open links are unavailable until this list reloads.</p> : null}
+    {state === 'loading' ? <p className="cn-browser-note" role="status">Loading shared Möbius…</p> : null}
+    {state === 'error' ? <p className="cn-browser-note" role="status">Showing the last successful list. Responses and Open are paused until it refreshes.</p> : null}
     {state === 'unlinked' ? <p className="cn-browser-note">Link your mobius.you account in Identity to see instances shared with you.</p> : null}
-    {state === 'ready' && !instances.length ? <div className="cn-empty-row">No instances shared with this account yet.</div> : null}
-    {state === 'ready' && instances.length ? <div className="cn-list" aria-label="Instances shared with me">
-      {instances.map((instance, index) => {
+    {actionError ? <p className="cn-browser-action-error" role="alert">{actionError}</p> : null}
+    {state === 'ready' && !instances.length ? <div className="cn-empty-row">No Möbius shared with this account yet.</div> : null}
+    {instances.length && state !== 'unlinked' ? <div className="cn-list" aria-label="Instances shared with me">
+      {instances.map(instance => {
         const url = safeSharedOpenUrl(instance)
-        return <article className="cn-browser-row" key={`${instance.grant_id}-${index}`}>
+        const invited = instance.status === 'invited'
+        const accepted = instance.status === 'accepted'
+        return <article className="cn-browser-row" key={`${instance.origin}/${instance.grant_id}`}>
           <div className="cn-browser-person">
             <span className="cn-outbound-name">{instance.name}</span>
-            <span className="cn-outbound-meta">Shared by {instance.owner_handle} · {instance.origin}</span>
+            <span className="cn-outbound-meta">Shared by {instance.owner_handle} · {instance.origin}{invited ? ' · Invited' : ''}</span>
           </div>
-          {url ? <a className="cn-btn cn-btn-ghost cn-btn-sm" href={url} target="_blank" rel="noopener noreferrer">Open</a>
-            : <span className="cn-browser-stop-warning">Open unavailable: untrusted link.</span>}
+          <div className="cn-shared-actions">
+            {invited ? <>
+              <button className="cn-btn cn-btn-sm" disabled={state !== 'ready' || Boolean(actionId)} onClick={() => respond(instance, 'accept')}>{actionId === instance.grant_id ? 'Saving…' : 'Accept'}</button>
+              {instance.unread ? <button className="cn-btn cn-btn-ghost cn-btn-sm" disabled={state !== 'ready' || Boolean(actionId)} onClick={() => respond(instance, 'later')}>Not now</button> : null}
+            </> : accepted && url && state === 'ready' ? <a className="cn-btn cn-btn-ghost cn-btn-sm" href={url} target="_blank" rel="noopener noreferrer">Open</a> : null}
+            {accepted && !url ? <span className="cn-browser-stop-warning">Open unavailable: untrusted link.</span> : null}
+          </div>
         </article>
       })}
     </div> : null}
@@ -70,8 +111,8 @@ export default function BrowserAccessSection({ headers }) {
   const [hasSnapshot, setHasSnapshot] = useState(false)
   const [label, setLabel] = useState('')
   const [recipientHandle, setRecipientHandle] = useState('')
-  const [instanceName, setInstanceName] = useState('')
   const [legacyOpen, setLegacyOpen] = useState(false)
+  const [accountOpen, setAccountOpen] = useState(false)
   const [invitation, setInvitation] = useState(null)
   const [copyState, setCopyState] = useState('idle')
   const [creating, setCreating] = useState(false)
@@ -190,7 +231,6 @@ export default function BrowserAccessSection({ headers }) {
 
   const createAccountGrant = async () => {
     const handle = recipientHandle.trim()
-    const name = instanceName.trim()
     if (!canManage || actionInFlight.current || !handle) return
     requestSequence.current += 1
     actionInFlight.current = true
@@ -199,7 +239,7 @@ export default function BrowserAccessSection({ headers }) {
     try {
       const response = await fetch(`${ENDPOINT}/accounts`, {
         method: 'POST', headers: headers({ 'Content-Type': 'application/json' }),
-        body: JSON.stringify({ recipient_handle: handle, ...(name ? { instance_name: name } : {}) }),
+        body: JSON.stringify({ recipient_handle: handle }),
       })
       if (response.status === 403 || response.status === 404) {
         terminal.current = true
@@ -213,7 +253,7 @@ export default function BrowserAccessSection({ headers }) {
         ? current.map(item => item.id === result.grant.id ? result.grant : item)
         : [result.grant, ...current])
       setRecipientHandle('')
-      setInstanceName('')
+      setAccountOpen(false)
     } catch {
       setActionError('Couldn’t confirm account access was added. Check the list before trying again.')
     } finally { actionInFlight.current = false; setCreating(false) }
@@ -323,36 +363,29 @@ export default function BrowserAccessSection({ headers }) {
   return <section className="cn-section cn-browser-access" aria-labelledby="cn-browser-access-title">
     <div className="cn-section-head">
       <div className="cn-section-heading">
-        <h2 className="cn-secttitle" id="cn-browser-access-title">People with browser access</h2>
+        <h2 className="cn-secttitle" id="cn-browser-access-title">People with access</h2>
         {state !== 'forbidden' && hasSnapshot ? <span className="cn-count">{grants.filter(grant => grant.status !== 'revoked').length}</span> : null}
       </div>
+      {hasSnapshot && state !== 'forbidden' ? <button className="cn-btn cn-btn-ghost cn-btn-sm" type="button" onClick={() => { setAccountOpen(value => !value); setLegacyOpen(false) }} aria-expanded={accountOpen}>{accountOpen ? 'Cancel' : <><Plus size={16}/>Invite person</>}</button> : null}
     </div>
-    {state === 'forbidden' ? <p className="cn-browser-note">Only this Möbius’s owner can manage browser access.</p> : <>
-      <p className="cn-browser-warning">People with browser access can read shared data and take powerful actions in this Möbius. Only invite someone you trust.</p>
+    {state === 'forbidden' ? <p className="cn-browser-note">Only this Möbius’s owner can manage shared access.</p> : <>
+      <p className="cn-browser-warning">People with access can read shared data and take powerful actions in this Möbius. Only invite someone you trust.</p>
       {state === 'error' ? <p className="cn-browser-note" role="status">
-        {hasSnapshot ? 'Showing the last successful list. Invitations and revoking access are paused until it refreshes.' : 'Browser access could not be loaded. No access changes are available right now.'}
+        {hasSnapshot ? 'Showing the last successful list. Invitations and revoking access are paused until it refreshes.' : 'Shared access could not be loaded. No access changes are available right now.'}
       </p> : null}
-      {state === 'loading' ? <p className="cn-browser-note" role="status">Loading browser access…</p> : null}
+      {state === 'loading' ? <p className="cn-browser-note" role="status">Loading shared access…</p> : null}
       {hasSnapshot ? <>
-        <div className="cn-browser-create">
+        {accountOpen ? <form className="cn-browser-create cn-account-create" onSubmit={event => { event.preventDefault(); createAccountGrant() }}>
           <label className="cn-field">
             <span className="cn-label">mobius.you handle</span>
-            <input className="cn-input" value={recipientHandle} maxLength={128} placeholder="your-friend" autoComplete="off"
+            <input className="cn-input" value={recipientHandle} maxLength={128} placeholder="your-friend" autoComplete="off" autoFocus
               onChange={event => setRecipientHandle(event.target.value)} disabled={!canManage}/>
           </label>
-          <button className="cn-btn" onClick={createAccountGrant} disabled={!canManage || !recipientHandle.trim()}>
-            <Plus size={16}/>{creating ? 'Adding…' : 'Add account access'}
-          </button>
-        </div>
-        <label className="cn-field">
-          <span className="cn-label">Instance name for recipient (optional)</span>
-          <input className="cn-input" value={instanceName} maxLength={128} placeholder="My Möbius"
-            onChange={event => setInstanceName(event.target.value)} disabled={!canManage}/>
-        </label>
-        <p className="cn-browser-note">Account access is tied to a verified mobius.you handle. The person can sign in from new browsers and access shared data and powerful actions until you revoke access.</p>
-        <button className="cn-btn cn-btn-ghost cn-btn-sm" type="button" onClick={() => setLegacyOpen(value => !value)} aria-expanded={legacyOpen}>
+          <button className="cn-btn" type="submit" disabled={!canManage || !recipientHandle.trim()}>{creating ? 'Inviting…' : 'Invite'}</button>
+        </form> : null}
+        {accountOpen ? <button className="cn-btn cn-btn-ghost cn-btn-sm cn-legacy-toggle" type="button" onClick={() => setLegacyOpen(value => !value)} aria-expanded={legacyOpen}>
           {legacyOpen ? 'Hide invitation option' : 'Use one-time invitation instead'}
-        </button>
+        </button> : null}
         {legacyOpen ? <>
         <div className="cn-browser-create">
           <label className="cn-field">
@@ -383,8 +416,8 @@ export default function BrowserAccessSection({ headers }) {
         </div> : null}
         {actionError ? <p className="cn-browser-action-error" role="alert">{actionError}</p> : null}
         {grants.some(grant => grant.kind !== 'account' && grant.status !== 'revoked') ? <p className="cn-browser-note">For an invitation recipient’s other browser or after a 30-day inactive session expires, use New invitation. It replaces unused links without changing existing sessions or access.</p> : null}
-        {grants.length ? <div className="cn-list" aria-label="Browser access grants">
-          {grants.map(grant => <article className="cn-browser-row" key={grant.id}>
+        {grants.some(grant => grant.status !== 'revoked' || pendingStops[grant.id] || directoryPending[grant.id]) ? <div className="cn-list" aria-label="Browser access grants">
+          {grants.filter(grant => grant.status !== 'revoked' || pendingStops[grant.id] || directoryPending[grant.id]).map(grant => <article className="cn-browser-row" key={grant.id}>
             <div className="cn-browser-person">
               <span className="cn-outbound-name" title={grant.kind === 'account' ? grant.recipient_handle : grant.label}>{grant.kind === 'account' ? grant.recipient_handle || 'Account recipient' : grant.label}</span>
               <span className="cn-outbound-meta">{grant.kind === 'account' ? `${grant.status === 'active' ? 'Verified mobius.you account' : 'mobius.you account'} · ${grant.status === 'revoked' ? 'Revoked' : grant.status === 'pending' ? 'Registration pending · Access unavailable' : 'Access until revoked'}` : grant.status === 'active' ? 'Active · Access until revoked' : grant.status === 'invited' ? 'Invited · Accepted access lasts until revoked' : 'Revoked'}</span>
@@ -404,7 +437,7 @@ export default function BrowserAccessSection({ headers }) {
             </div> : pendingStops[grant.id] || directoryPending[grant.id] ? <button className="cn-btn cn-btn-ghost cn-btn-sm cn-browser-retry"
               onClick={() => revoke(grant)} disabled={!canManage}>{revokingId === grant.id ? 'Retrying…' : directoryPending[grant.id] ? 'Retry cleanup' : 'Retry stop'}</button> : null}
           </article>)}
-        </div> : <div className="cn-empty-row">No browser access invitations yet.</div>}
+        </div> : <div className="cn-empty-row">No people with access yet.</div>}
       </> : null}
     </>}
   </section>

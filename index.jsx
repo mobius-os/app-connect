@@ -13,7 +13,7 @@ import {
   platformLabel,
 } from './connect-state.mjs'
 import { loadConnectionList, responseError, responseErrorData } from './connect-api.mjs'
-import BrowserAccessSection, { SharedWithMe } from './BrowserAccessSection.jsx'
+import BrowserAccessSection, { SharedWithMe, useSharedDirectory } from './BrowserAccessSection.jsx'
 
 const DISCONNECT_COMMAND = 'python3 ~/.mobius-connect/runner.py --uninstall'
 const DEFAULT_MACHINE_NAME = 'My machine'
@@ -35,6 +35,18 @@ const CSS = `
   .cn-sub { margin: 4px 0 0; color: var(--muted); font-size: 11.5px; line-height: 1.2; }
   .cn-shell { width: min(728px, calc(100% - 32px)); margin: 0 auto; padding: 28px 0 64px; }
 
+  .cn-tabs { display: flex; gap: 20px; border-bottom: 1px solid var(--border); margin: -4px 0 24px; }
+  .cn-tab { position: relative; display: inline-flex; align-items: center; gap: 7px; min-height: 44px; padding: 0 2px; border: 0; color: var(--muted); background: transparent; font: 650 13px var(--font); cursor: pointer; }
+  .cn-tab[aria-selected="true"] { color: var(--text); }
+  .cn-tab[aria-selected="true"]::after { content: ''; position: absolute; bottom: -1px; left: 0; right: 0; height: 2px; background: var(--cn-violet); }
+  .cn-tab:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
+  .cn-tab-badge { display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 0 4px; border-radius: 9px; color: #fff; background: var(--cn-violet); font-size: 10px; font-variant-numeric: tabular-nums; }
+  .cn-tab-panel[hidden] { display: none; }
+  .cn-shared-panel > .cn-section:first-child { margin-top: 0; padding-top: 0; }
+  .cn-shared-actions { display: flex; align-items: center; gap: 8px; flex: none; }
+  .cn-account-create { margin-top: 13px; }
+  .cn-legacy-toggle { margin-left: 8px; }
+  .cn-browser-access .cn-section-head { margin-bottom: 14px; }
   .cn-section { padding-top: 32px; margin-top: 34px; }
   .cn-section-first { padding-top: 0; margin-top: 0; }
   .cn-section-head { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin: 0 0 14px; }
@@ -175,7 +187,7 @@ const CSS = `
   .cn-browser-person { min-width: 0; }
   .cn-browser-person .cn-outbound-name { display: block; }
   .cn-browser-stop-warning { display: block; max-width: 46ch; margin-top: 5px; color: #d7a848; font-size: 11.5px; line-height: 1.4; }
-  .cn-browser-row-action { display: grid; grid-template-columns: 126px 132px 80px; align-items: center; gap: 8px; }
+  .cn-browser-row-action { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
   .cn-browser-row-action .cn-btn { min-width: 0; padding: 0 8px; }
   .cn-browser-retry { flex: none; }
   .cn-shared-with-me .cn-browser-person { overflow-wrap: anywhere; }
@@ -221,8 +233,10 @@ const CSS = `
     .cn-browser-create { grid-template-columns: 1fr; }
     .cn-browser-create > .cn-btn { width: 100%; }
     .cn-browser-row { align-items: flex-start; flex-direction: column; }
-    .cn-browser-row-action { width: 100%; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
-    .cn-browser-row-action .cn-inline-not-now { grid-column: 2; }
+    .cn-shared-actions { width: 100%; }
+    .cn-shared-actions .cn-btn { flex: 1; }
+    .cn-browser-row-action { width: 100%; flex-wrap: wrap; }
+    .cn-browser-row-action .cn-btn { flex: 1; }
   }
 `
 
@@ -849,6 +863,19 @@ function MachineRow({
 }
 
 export default function App({ appId, token }) {
+  const [activeTab, setActiveTab] = useState('machines')
+  const machinesTab = useRef(null)
+  const sharedTab = useRef(null)
+  const onTabKeyDown = event => {
+    let next
+    if (event.key === 'ArrowRight' || event.key === 'ArrowLeft') next = activeTab === 'machines' ? 'shared' : 'machines'
+    else if (event.key === 'Home') next = 'machines'
+    else if (event.key === 'End') next = 'shared'
+    else return
+    event.preventDefault()
+    setActiveTab(next)
+    ;(next === 'machines' ? machinesTab : sharedTab).current?.focus()
+  }
   const [hosts, setHosts] = useState([])
   const [outbound, setOutbound] = useState([])
   const [serviceActive, setServiceActive] = useState(null)
@@ -892,6 +919,10 @@ export default function App({ appId, token }) {
     Authorization: `Bearer ${token}`,
     ...extra,
   }), [token])
+
+  const directory = useSharedDirectory(headers)
+  const unreadCount = directory.state === 'ready' || directory.state === 'error'
+    ? directory.instances.filter(instance => instance.status === 'invited' && instance.unread === true).length : 0
 
   const load = useCallback(async () => {
     const sequence = ++loadSequence.current
@@ -1281,6 +1312,11 @@ export default function App({ appId, token }) {
 
       {serviceActive === null ? <div className="cn-loading" role="status">Loading Connect…</div> : null}
 
+      <div className="cn-tabs" role="tablist" aria-label="Connect sections" onKeyDown={onTabKeyDown}>
+        <button className="cn-tab" type="button" role="tab" id="cn-tab-machines" ref={machinesTab} tabIndex={activeTab === 'machines' ? 0 : -1} aria-controls="cn-panel-machines" aria-selected={activeTab === 'machines'} onClick={() => setActiveTab('machines')}>Machines</button>
+        <button className="cn-tab" type="button" role="tab" id="cn-tab-shared" ref={sharedTab} tabIndex={activeTab === 'shared' ? 0 : -1} aria-controls="cn-panel-shared" aria-selected={activeTab === 'shared'} onClick={() => setActiveTab('shared')}>Shared Möbius{activeTab === 'machines' && unreadCount > 0 ? <span className="cn-tab-badge" aria-label={`${unreadCount} unread invitations`}>{unreadCount}</span> : null}</button>
+      </div>
+      <div className="cn-tab-panel" id="cn-panel-machines" role="tabpanel" aria-labelledby="cn-tab-machines" hidden={activeTab !== 'machines'}>
       {serviceActive === true ? <section className="cn-section cn-section-first" aria-labelledby="cn-machines">
         <div className="cn-section-head">
           <div className="cn-section-heading">
@@ -1409,8 +1445,11 @@ export default function App({ appId, token }) {
         onKeep={() => setConfirmation(null)}
         onRevoke={revokeOutboundAccess}
       /> : null}
-      <BrowserAccessSection headers={headers}/>
-      <SharedWithMe headers={headers}/>
+      </div>
+      <div className="cn-tab-panel cn-shared-panel" id="cn-panel-shared" role="tabpanel" aria-labelledby="cn-tab-shared" hidden={activeTab !== 'shared'}>
+        <BrowserAccessSection headers={headers}/>
+        <SharedWithMe directory={directory}/>
+      </div>
     </main>
   </div>
 }

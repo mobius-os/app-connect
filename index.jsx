@@ -13,7 +13,7 @@ import {
   platformLabel,
 } from './connect-state.mjs'
 import { loadConnectionList, responseError, responseErrorData } from './connect-api.mjs'
-import BrowserAccessSection from './BrowserAccessSection.jsx'
+import BrowserAccessSection, { SharedWithMe } from './BrowserAccessSection.jsx'
 
 const DISCONNECT_COMMAND = 'python3 ~/.mobius-connect/runner.py --uninstall'
 const DEFAULT_MACHINE_NAME = 'My machine'
@@ -165,6 +165,7 @@ const CSS = `
   .cn-browser-note { margin: 9px 0 15px; color: var(--muted); font-size: 11.5px; line-height: 1.45; }
   .cn-browser-create { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 10px; }
   .cn-browser-create > .cn-btn { min-height: 46px; }
+  .cn-browser-create + .cn-field { display: block; margin-top: 10px; }
   .cn-browser-link { margin: 14px 0 18px; padding: 15px; border: 1px solid var(--border); border-radius: 14px; background: var(--surface); }
   .cn-browser-link-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
   .cn-browser-link-head strong { font-size: 13px; font-weight: 680; }
@@ -177,6 +178,8 @@ const CSS = `
   .cn-browser-row-action { display: grid; grid-template-columns: 126px 132px 80px; align-items: center; gap: 8px; }
   .cn-browser-row-action .cn-btn { min-width: 0; padding: 0 8px; }
   .cn-browser-retry { flex: none; }
+  .cn-shared-with-me .cn-browser-person { overflow-wrap: anywhere; }
+  .cn-shared-with-me .cn-btn { flex: none; }
 
   .cn-rename { pointer-events: auto; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; width: 100%; }
   .cn-rename .cn-input { height: 40px; flex: 1; min-width: 0; }
@@ -1407,6 +1410,7 @@ export default function App({ appId, token }) {
         onRevoke={revokeOutboundAccess}
       /> : null}
       <BrowserAccessSection headers={headers}/>
+      <SharedWithMe headers={headers}/>
     </main>
   </div>
 }

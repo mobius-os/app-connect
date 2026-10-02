@@ -55,6 +55,7 @@ test('one-time link appears only after explicit create, and uses the owner-assig
     await page.getByRole('heading', { name: 'People with browser access' }).waitFor()
     await page.getByText('Alex', { exact: true }).waitFor()
     assert.equal(await page.getByText('private-secret').count(), 0)
+    await page.getByRole('button', { name: 'Use one-time invitation instead' }).click()
     await page.getByPlaceholder('Alex').fill('Sam')
     await page.getByRole('button', { name: 'Create invitation' }).click()
     await page.getByText('Invitation for Sam').waitFor()
@@ -192,6 +193,7 @@ test('transient load error retains last grant snapshot and disables unsafe actio
   })
   try {
     await page.getByText('Alex', { exact: true }).waitFor()
+    await page.getByRole('button', { name: 'Use one-time invitation instead' }).click()
     await page.getByText('Showing the last successful list.').waitFor({ timeout: 8000 })
     assert.equal(await page.getByText('Alex', { exact: true }).count(), 1)
     assert.equal(await page.getByRole('button', { name: 'Revoke', exact: true }).isDisabled(), true)
@@ -213,5 +215,49 @@ test('fresh mount recovers pending-stop status from the server and clears confir
     pending = false
     await page.getByRole('button', { name: 'Retry stop' }).waitFor({ state: 'hidden', timeout: 8000 })
     assert.equal(await page.getByText('Revoked', { exact: true }).count(), 1)
+  } finally { await browser.close() }
+})
+
+test('account grant posts a handle and optional name, displays identity, and never offers invitation reissue', async () => {
+  const account = { id: 'a1', kind: 'account', recipient_handle: 'friend', status: 'active' }
+  const { browser, page, requests } = await fixture(request => request.method() === 'POST'
+    ? { body: { grant: account } } : { body: { grants: [] } })
+  try {
+    await page.getByRole('textbox', { name: 'mobius.you handle' }).fill('friend')
+    await page.getByRole('textbox', { name: 'Instance name for recipient (optional)' }).fill('Research')
+    await page.getByRole('button', { name: 'Add account access' }).click()
+    await page.getByText('Verified mobius.you account · Access until revoked').waitFor()
+    assert.deepEqual(requests.find(item => item.method === 'POST')?.body,
+      { recipient_handle: 'friend', instance_name: 'Research' })
+    assert.equal(await page.getByRole('button', { name: 'New invitation' }).count(), 0)
+    assert.equal(await page.getByRole('button', { name: 'Revoke', exact: true }).count(), 1)
+  } finally { await browser.close() }
+})
+
+test('directory cleanup pending stays visible and retryable after local account revoke', async () => {
+  const account = { id: 'a1', kind: 'account', recipient_handle: 'friend', status: 'active' }
+  const { browser, page } = await fixture(request => request.method() === 'DELETE'
+    ? { status: 202, body: { revoked: true, pending_commands: [], pending_chat_ids: [], directory_cleanup_pending: true } }
+    : { body: { grants: [account] } })
+  try {
+    await page.getByRole('button', { name: 'Revoke', exact: true }).click()
+    await page.getByRole('button', { name: 'Confirm revoke' }).click()
+    await page.getByText('Directory removal is pending', { exact: false }).waitFor()
+    assert.equal(await page.getByRole('button', { name: 'Retry cleanup' }).count(), 1)
+    assert.equal(await page.getByRole('button', { name: 'Revoke', exact: true }).count(), 0)
+  } finally { await browser.close() }
+})
+
+test('directory cleanup state recovers from grant list after reload, then clears only on server confirmation', async () => {
+  let pending = true
+  const account = { id: 'a1', kind: 'account', recipient_handle: 'friend', status: 'revoked' }
+  const { browser, page } = await fixture(() => ({ body: {
+    grants: [{ ...account, directory_cleanup_pending: pending, stop_pending: false }],
+  } }))
+  try {
+    await page.getByRole('button', { name: 'Retry cleanup' }).waitFor()
+    pending = false
+    await page.getByRole('button', { name: 'Retry cleanup' }).waitFor({ state: 'hidden', timeout: 8000 })
+    assert.equal(await page.getByText('Revoked', { exact: false }).count() > 0, true)
   } finally { await browser.close() }
 })

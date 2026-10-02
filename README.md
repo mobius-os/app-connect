@@ -2,12 +2,17 @@
 
 ## Trusted browser access
 
-On a platform version that supports browser sharing, Connect can invite a
-trusted person into the same chats, apps and data, with independent navigation.
-Access lasts until revoked. Recipient labels are assigned by the owner, not
-verified account identities. Deliver each one-use invitation privately; the
-link expires after one day. A new invitation can sign in another browser
-without ending existing sessions.
+On a platform version that supports browser sharing, Connect can give a trusted
+mobius.you account access to the same chats, apps and data, with independent
+navigation. The recipient signs in with their own account from each browser,
+and access lasts until revoked. Connect also retains one-use invitations as a
+separate option. Invitation labels are owner-assigned, not verified identities;
+deliver each link privately. It expires after one day. A new invitation can
+sign in another browser without ending existing sessions.
+
+Linked account holders can find shared instances under **Shared with me**.
+Open links are accepted only when they point to the exact HTTPS account-start
+route on the advertised origin; discovery does not itself authorize access.
 
 This requires a directly reachable HTTPS instance. It is not screen sharing,
 a private-network tunnel, or isolated accounts. Guests can take powerful

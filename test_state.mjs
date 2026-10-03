@@ -5,7 +5,6 @@ import {
   activeCommands,
   appendTail,
   cancelCommandPath,
-  commandCapabilities,
   disconnectPresentation,
   outputPage,
   outputPath,
@@ -38,9 +37,6 @@ test('a Möbius from before parallel commands still reports its one command', ()
 test('cancel and output target the exact host and command', () => {
   const host = { id: 'h_machine' }
   const command = { id: 'aabbccddeeff0011', state: 'canceling' }
-  assert.deepEqual(commandCapabilities(command), {
-    canStop: true, stopping: true, state: 'canceling',
-  })
   assert.equal(
     cancelCommandPath(host, command),
     '/api/connect/hosts/h_machine/commands/aabbccddeeff0011/cancel',
@@ -51,9 +47,6 @@ test('cancel and output target the exact host and command', () => {
   )
   assert.equal(cancelCommandPath(host, null), null)
   assert.equal(cancelCommandPath({ id: '' }, command), null)
-  assert.deepEqual(commandCapabilities({ state: 'running' }), {
-    canStop: false, stopping: false, state: 'running',
-  })
 })
 
 test('the live tail keeps only the latest lines across chunk boundaries', () => {

@@ -1,10 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { Check, ChevronDown, Copy, Desktop, Pencil, Plus } from '@openai/apps-sdk-ui/components/Icon'
+import { ChevronDown, Desktop, Pencil, Plus } from '@openai/apps-sdk-ui/components/Icon'
 import {
   activeCommands,
   appendTail,
   cancelCommandPath,
-  commandCapabilities,
   disconnectPresentation,
   outputPage,
   outputPath,
@@ -12,7 +11,8 @@ import {
   statusOf,
   platformLabel,
 } from './connect-state.mjs'
-import { loadConnectionList, responseError, responseErrorData } from './connect-api.mjs'
+import { failureMessage, responseError, responseErrorData, serverError } from './connect-api.mjs'
+import { CopyCommand, InlineActionConfirm, useAction, usePolledList } from './connect-ui.jsx'
 import BrowserAccessSection, { SharedWithMe, useSharedDirectory } from './BrowserAccessSection.jsx'
 
 const DISCONNECT_COMMAND = 'python3 ~/.mobius-connect/runner.py --uninstall'
@@ -44,9 +44,6 @@ const CSS = `
   .cn-tab-panel[hidden] { display: none; }
   .cn-shared-panel > .cn-section:first-child { margin-top: 0; padding-top: 0; }
   .cn-shared-actions { display: flex; align-items: center; gap: 8px; flex: none; }
-  .cn-account-create { margin-top: 13px; }
-  .cn-legacy-toggle { margin-left: 8px; }
-  .cn-browser-access .cn-section-head { margin-bottom: 14px; }
   .cn-section { padding-top: 32px; margin-top: 34px; }
   .cn-section-first { padding-top: 0; margin-top: 0; }
   .cn-section-head { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin: 0 0 14px; }
@@ -88,7 +85,6 @@ const CSS = `
   .cn-agent-toggle:focus-within { outline: 2px solid var(--text); outline-offset: 2px; }
   .cn-agent-toggle input { margin: 0; }
   .cn-agent-toggle input:focus-visible { outline: none; }
-  .cn-outbound-actions { display: flex; align-items: center; gap: 8px; }
 
   .cn-message { margin: 0 0 16px; padding: 12px 14px; border-radius: 12px; font-size: 13px; line-height: 1.45; }
   .cn-error { color: #ffb7ba; background: color-mix(in srgb, #e5484d 12%, var(--surface)); border: 1px solid color-mix(in srgb, #e5484d 34%, var(--border)); }
@@ -123,23 +119,17 @@ const CSS = `
   .cn-host-details[hidden] { display: none; }
   .cn-host-details { padding: 0 0 16px 36px; }
   .cn-activity-empty { margin: 0; padding: 12px 0; color: var(--muted); font-size: 12px; }
-  .cn-outbound-actions { grid-column: 2 / -1; flex-wrap: wrap; }
-  .cn-outbound-actions .cn-inline-confirm { width: auto; flex: 1; min-width: 0; flex-wrap: wrap; }
+  .cn-outbound-actions { grid-column: 2 / -1; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+  .cn-outbound-actions .cn-inline-confirm { flex: 1; min-width: 0; flex-wrap: wrap; }
   .cn-outbound .cn-host-top { justify-content: space-between; flex-wrap: wrap; }
   .cn-disconnect, .cn-command, .cn-update, .cn-finished { min-width: 0; margin: 0; padding: 12px 0; }
-  .cn-disconnect-title, .cn-command-title, .cn-update-title { margin: 0 0 4px; font-size: 13px; font-weight: 680; }
-  .cn-disconnect-copy, .cn-command-meta, .cn-update-copy { margin: 0 0 10px; color: var(--muted); font-size: 12px; line-height: 1.45; }
+  .cn-disconnect-title, .cn-command-title { margin: 0 0 4px; font-size: 13px; font-weight: 680; }
+  .cn-disconnect-copy, .cn-command-meta { margin: 0 0 10px; color: var(--muted); font-size: 12px; line-height: 1.45; }
   .cn-disconnect-actions { display: flex; align-items: center; justify-content: flex-start; gap: 8px; }
   .cn-disconnect-alt, .cn-update-manual { margin-top: 12px; }
   .cn-update-manual:first-child { margin-top: 0; }
-  .cn-inline-confirm { width: 100%; display: flex; align-items: center; gap: 8px; }
+  .cn-inline-confirm { display: flex; align-items: center; gap: 8px; }
   .cn-inline-action { min-height: 44px; }
-  .cn-action-anchor { position: relative; z-index: 3; display: inline-flex; align-items: center; }
-  .cn-action-popover { position: absolute; z-index: 30; top: calc(100% + 8px); left: 0; width: min(320px, calc(100vw - 32px)); padding: 14px; border: 1px solid var(--border); border-radius: 12px; color: var(--text); background: var(--surface); box-shadow: 0 12px 28px rgb(0 0 0 / 28%); }
-  .cn-action-anchor.align-end .cn-action-popover { left: auto; right: 0; }
-  .cn-action-popover h3 { margin: 0 0 5px; font-size: 13px; font-weight: 700; }
-  .cn-action-popover p { margin: 0 0 12px; color: var(--muted); font-size: 12px; line-height: 1.45; }
-  .cn-action-popover-actions { display: flex; justify-content: flex-end; gap: 8px; }
   .cn-update-result { margin: 10px 0 0; }
   .cn-update-result.is-waiting { color: #d7a848; }
   .cn-update-result.is-error { color: #ffb7ba; }
@@ -173,11 +163,10 @@ const CSS = `
   .cn-copybtn { min-width: 120px; }
   .cn-copybtn.is-copied { color: #36b999; border-color: color-mix(in srgb, var(--cn-mint) 35%, var(--border)); background: color-mix(in srgb, var(--cn-mint) 9%, var(--surface)); }
 
-  .cn-browser-warning { max-width: 67ch; margin: 0 0 16px; color: var(--text); font-size: 12.5px; line-height: 1.5; }
+  .cn-browser-warning { max-width: 67ch; margin: 12px 0; color: var(--text); font-size: 12.5px; line-height: 1.5; }
   .cn-browser-note { margin: 9px 0 15px; color: var(--muted); font-size: 11.5px; line-height: 1.45; }
-  .cn-browser-create { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 10px; }
+  .cn-browser-create { margin-top: 13px; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 10px; }
   .cn-browser-create > .cn-btn { min-height: 46px; }
-  .cn-browser-create + .cn-field { display: block; margin-top: 10px; }
   .cn-browser-link { margin: 14px 0 18px; padding: 15px; border: 1px solid var(--border); border-radius: 14px; background: var(--surface); }
   .cn-browser-link-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
   .cn-browser-link-head strong { font-size: 13px; font-weight: 680; }
@@ -205,7 +194,6 @@ const CSS = `
     .cn-shell { width: calc(100% - 24px); padding-top: 22px; }
     .cn-section { padding-top: 26px; margin-top: 28px; }
     .cn-section-first { padding-top: 0; margin-top: 0; }
-    .cn-section-head { align-items: center; }
     .cn-secttitle { font-size: 14px; }
     .cn-machine-form { grid-template-columns: 1fr; }
     .cn-machine-form > .cn-btn { width: 100%; }
@@ -216,15 +204,9 @@ const CSS = `
     .cn-host-status { gap: 4px; }
     .cn-toggle-mark { width: 20px; }
     .cn-command-row { align-items: stretch; flex-direction: column; }
-    .cn-command-row .cn-action-anchor, .cn-command-row .cn-btn { width: 100%; }
+    .cn-command-row .cn-btn { flex: 1; }
     .cn-disconnect-actions { align-items: stretch; flex-direction: column-reverse; }
-    .cn-disconnect-actions > .cn-action-anchor, .cn-disconnect-actions > .cn-btn,
-    .cn-disconnect-actions .cn-action-anchor > .cn-btn { width: 100%; }
-    .cn-action-popover-actions { align-items: stretch; flex-direction: column-reverse; }
-    .cn-action-popover-actions .cn-btn { width: 100%; }
-    .cn-outbound-actions { flex-wrap: wrap; }
-    .cn-action-popover { max-width: calc(100vw - 40px); }
-    .cn-rename { flex-wrap: wrap; }
+    .cn-disconnect-actions > .cn-btn { width: 100%; }
     .cn-rename .cn-input { flex-basis: 100%; }
     .cn-rename-actions { width: 100%; }
     .cn-rename-actions .cn-btn { flex: 1; }
@@ -253,48 +235,7 @@ function relTime(timestamp) {
   return `${Math.floor(seconds / 86400)}d ago`
 }
 
-function useCopyFeedback() {
-  const [copiedKey, setCopiedKey] = useState(null)
-  const [failedKey, setFailedKey] = useState(null)
-  const resetTimer = useRef(null)
-
-  useEffect(() => () => clearTimeout(resetTimer.current), [])
-
-  const copy = useCallback(async (key, text) => {
-    clearTimeout(resetTimer.current)
-    const copied = await window.mobius?.clipboard?.writeText(text)
-    if (!copied) {
-      setCopiedKey(null)
-      setFailedKey(key)
-      return
-    }
-    setFailedKey(null)
-    setCopiedKey(key)
-    resetTimer.current = setTimeout(() => setCopiedKey(null), 2000)
-  }, [])
-
-  return { copiedKey, failedKey, copy }
-}
-
-function CopyCommand({ command, copyKey, copiedKey, failedKey, onCopy, onSelect }) {
-  const copied = copiedKey === copyKey
-  return <>
-    <div className="cn-code-row">
-      <code className="cn-code" onClick={onSelect}>{command}</code>
-      <button
-        className={`cn-btn cn-btn-ghost cn-copybtn${copied ? ' is-copied' : ''}`}
-        onClick={() => onCopy(copyKey, command)}
-      >
-        {copied ? <><Check size={17}/>Copied</> : <><Copy size={17}/>Copy command</>}
-      </button>
-    </div>
-    {failedKey === copyKey ? <div className="cn-hint" role="status">
-      Copy didn’t work on this device. Tap and hold the command to copy it.
-    </div> : null}
-  </>
-}
-
-function PairingPanel({ pairing, copiedKey, failedKey, onCopy, onDone, onRefresh, onSelect, stale }) {
+function PairingPanel({ pairing, onDone, onRefresh, stale }) {
   const expires = pairing.expires_at ? new Date(pairing.expires_at * 1000).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : null
   return <section className="cn-pairing" aria-labelledby="cn-pair-title">
     <div className="cn-card-head">
@@ -307,14 +248,7 @@ function PairingPanel({ pairing, copiedKey, failedKey, onCopy, onDone, onRefresh
       <span className="cn-step-n">1</span>
       <div>
         <p className="cn-step-t">Run this command on the machine. It only needs Python 3.</p>
-        <CopyCommand
-          command={pairing.install_command}
-          copyKey="pairing"
-          copiedKey={copiedKey}
-          failedKey={failedKey}
-          onCopy={onCopy}
-          onSelect={onSelect}
-        />
+        <CopyCommand command={pairing.install_command}/>
         <div className="cn-hint">
           Installs a background service that reconnects after reboot. {expires ? `Expires at ${expires}.` : 'This command expires after 15 minutes.'} <button className="cn-pair-refresh" onClick={onRefresh} disabled={stale}>Refresh command</button>
         </div>
@@ -327,69 +261,9 @@ function PairingPanel({ pairing, copiedKey, failedKey, onCopy, onDone, onRefresh
   </section>
 }
 
-function ActionConfirm({
-  id, open, title, description, triggerLabel, confirmLabel, confirmingLabel,
-  onOpen, onCancel, onConfirm, disabled = false, confirming = false,
-  triggerClass = 'cn-btn cn-btn-ghost cn-btn-sm', tone = 'danger', align = 'start',
-}) {
-  return <div className={`cn-action-anchor${align === 'end' ? ' align-end' : ''}`}>
-    <button
-      className={triggerClass}
-      onClick={open ? onCancel : onOpen}
-      disabled={disabled || confirming}
-      aria-expanded={open}
-      aria-controls={open ? id : undefined}
-    >{triggerLabel}</button>
-    {open ? <section
-      className="cn-action-popover"
-      id={id}
-      role="group"
-      aria-labelledby={`${id}-title`}
-      aria-describedby={description ? `${id}-description` : undefined}
-      onKeyDown={event => { if (event.key === 'Escape') onCancel() }}
-    >
-      <h3 id={`${id}-title`}>{title}</h3>
-      {description ? <p id={`${id}-description`}>{description}</p> : null}
-      <div className="cn-action-popover-actions">
-        <button className="cn-btn cn-btn-ghost cn-btn-sm" onClick={onCancel} disabled={confirming} autoFocus>
-          {confirming ? 'Working…' : 'Not now'}
-        </button>
-        <button
-          className={`cn-btn cn-btn-sm${tone === 'danger' ? ' cn-btn-danger' : ''}`}
-          onClick={onConfirm}
-          disabled={disabled || confirming}
-        >{confirming ? confirmingLabel : confirmLabel}</button>
-      </div>
-    </section> : null}
-  </div>
-}
-
-function InlineActionConfirm({
-  open, triggerLabel, confirmLabel, confirmingLabel, onOpen, onCancel,
-  onConfirm, disabled = false, confirming = false,
-  triggerClass = 'cn-btn cn-btn-sm', tone = 'danger',
-}) {
-  return <div className="cn-inline-confirm">
-    <button
-      className={`${triggerClass} cn-inline-action${tone === 'danger' ? ' cn-btn-danger' : ''}`}
-      onClick={open ? onConfirm : onOpen}
-      disabled={disabled || confirming}
-      aria-expanded={open}
-    >{confirming ? confirmingLabel : open ? confirmLabel : triggerLabel}</button>
-    {open ? <button
-      className="cn-btn cn-btn-ghost cn-btn-sm cn-inline-not-now"
-      onClick={onCancel}
-      disabled={confirming}
-    >Not now</button> : null}
-  </div>
-}
-
 function DisconnectPanel({
-  host, busy, stale, confirmingRemove, copiedKey, failedKey, onCopy, onPair,
-  onRemoveOpen, onRemoveCancel, onRemove, onSelect,
+  host, busy, stale, confirmingRemove, onPair, onRemoveOpen, onRemoveCancel, onRemove,
 }) {
-  const command = host.disconnect_command || DISCONNECT_COMMAND
-  const copyKey = `disconnect:${host.id}`
   const presentation = disconnectPresentation(host)
   const action = busy
     ? (host.online ? 'Disconnecting…' : 'Removing…')
@@ -407,34 +281,25 @@ function DisconnectPanel({
       <InlineActionConfirm
         open={confirmingRemove}
         triggerLabel={action}
-        triggerClass="cn-btn cn-btn-sm"
-        confirmLabel={host.online ? 'Confirm disconnect' : (host.paired ? 'Confirm remove' : 'Confirm remove')}
+        confirmLabel={host.online ? 'Confirm disconnect' : 'Confirm remove'}
         confirmingLabel={host.online ? 'Disconnecting…' : 'Removing…'}
         onOpen={onRemoveOpen}
         onCancel={onRemoveCancel}
         onConfirm={onRemove}
         disabled={busy || stale}
         confirming={busy}
-        tone="danger"
       />
     </div>
     {host.paired ? <div className="cn-disconnect-alt">
       <p className="cn-disconnect-alt-title">{host.online ? 'Disconnect manually' : presentation.commandTitle}</p>
       {!host.online ? <p className="cn-disconnect-alt-copy">{presentation.commandDescription}</p> : null}
-      <CopyCommand
-        command={command}
-        copyKey={copyKey}
-        copiedKey={copiedKey}
-        failedKey={failedKey}
-        onCopy={onCopy}
-        onSelect={onSelect}
-      />
+      <CopyCommand command={host.disconnect_command || DISCONNECT_COMMAND}/>
     </div> : null}
   </div>
 }
 
 function OutboundAccess({
-  connections, open, label, command, agent, agentSupported, granting, confirmingId, revokingId, agentBusyId, stale,
+  connections, open, label, command, agent, agentSupported, pending, confirmingId, stale,
   onOpen, onCancel, onLabel, onCommand, onAgent, onGrant, onConfirm, onKeep, onRevoke, onToggleAgent,
 }) {
   return <section className="cn-section" aria-labelledby="cn-access-title">
@@ -481,8 +346,8 @@ function OutboundAccess({
       </label> : null}
       <div className="cn-form-footer">
         <p className="cn-share-warning">Full command access until you revoke it.</p>
-        <button className="cn-btn" onClick={onGrant} disabled={stale || granting || !label.trim() || !command.trim()}>
-          {granting ? 'Connecting…' : 'Grant access'}
+        <button className="cn-btn" onClick={onGrant} disabled={stale || pending.includes('grant-access') || !label.trim() || !command.trim()}>
+          {pending.includes('grant-access') ? 'Connecting…' : 'Grant access'}
         </button>
       </div>
     </div> : null}
@@ -490,6 +355,7 @@ function OutboundAccess({
     {connections.length ? <div className="cn-list" aria-label="Machines that can control this Möbius">
       {connections.map(connection => {
         const confirming = confirmingId === connection.id
+        const revoking = pending.includes(`revoke:${connection.id}`)
         const status = connection.online ? 'Service running' : (connection.status === 'ended' ? 'Ended' : 'Needs attention')
         const statusClass = connection.online ? 'on' : (connection.status === 'ended' ? '' : 'wait')
         return <article className={`cn-outbound${confirming ? ' is-confirming' : ''}`} key={connection.id}>
@@ -511,7 +377,7 @@ function OutboundAccess({
               <input
                 type="checkbox"
                 checked={connection.agent}
-                disabled={stale || agentBusyId === connection.id}
+                disabled={stale || pending.includes(`agent:${connection.id}`)}
                 onChange={event => onToggleAgent(connection, event.target.checked)}
               />Full access
             </label> : null}
@@ -523,8 +389,8 @@ function OutboundAccess({
               onOpen={() => onConfirm(connection.id)}
               onCancel={onKeep}
               onConfirm={() => onRevoke(connection)}
-              disabled={stale || revokingId === connection.id}
-              confirming={revokingId === connection.id}
+              disabled={stale}
+              confirming={revoking}
             />
           </div>
         </article>
@@ -534,9 +400,9 @@ function OutboundAccess({
 }
 
 function CommandPanel({ host, command, tail, confirming, stopping, stale, onConfirm, onKeep, onStop }) {
-  const capabilities = commandCapabilities(command)
-  const stoppingNow = capabilities.stopping || stopping
-  const canStop = capabilities.canStop
+  const stoppingNow = command.state === 'canceling' || stopping
+  // A Möbius from before parallel commands may report a command without its id.
+  const canStop = Boolean(command.id)
   const started = command.started_at ? `Started ${relTime(command.started_at)}` : 'Starting on the machine'
   const limit = command.timeout ? ` · ${formatLimit(command.timeout)} limit` : ''
 
@@ -549,21 +415,16 @@ function CommandPanel({ host, command, tail, confirming, stopping, stale, onConf
           {canStop ? `${started}${limit}` : 'Connect is waiting for the command details before it can offer a stop action.'}
         </p>
       </div>
-      {canStop ? <ActionConfirm
-        id={`cn-stop-${host.id}-${command.id}`}
+      {canStop ? <InlineActionConfirm
         open={confirming}
-        title="Stop this command?"
-        description={`This also stops every process it started on ${host.name}.`}
-        triggerLabel={stoppingNow ? 'Stopping…' : 'Stop command'}
-        confirmLabel="Stop now"
+        triggerLabel="Stop command"
+        confirmLabel="Stop command and its processes"
         confirmingLabel="Stopping…"
         onOpen={onConfirm}
         onCancel={onKeep}
         onConfirm={onStop}
-        disabled={stale || stoppingNow}
+        disabled={stale}
         confirming={stoppingNow}
-        triggerClass="cn-btn cn-btn-danger cn-btn-sm"
-        align="end"
       /> : null}
     </div>
     {tail ? <pre className="cn-tail" aria-label="Latest output">{tail}</pre> : null}
@@ -680,10 +541,7 @@ function formatLimit(seconds) {
   return `${seconds}s`
 }
 
-function UpdatePanel({
-  host, copiedKey, failedKey, onCopy, onSelect,
-  confirming, updating, result, onUpdate, onConfirm, onCancel, stale,
-}) {
+function UpdatePanel({ host, confirming, updating, result, onUpdate, onConfirm, onCancel, stale }) {
   if (host.runner_managed === 'mobius') {
     return <div className="cn-update">
       <p className="cn-update-result" role="status">
@@ -692,14 +550,13 @@ function UpdatePanel({
     </div>
   }
   if (!host.update_command && !result) return null
-  const copyKey = `update:${host.id}`
   const currentResult = result?.hostId === host.id ? result : null
   const updated = !host.runner_update_available
   const feedback = runnerUpdateFeedback(host, currentResult, stale)
   if (!updating && feedback?.tone === 'success') return null
   const retry = feedback?.retry
   return <div className="cn-update">
-    {!updated && !host.busy && !updating && host.online ? <InlineActionConfirm
+    {host.update_command && !updated && !host.busy && !updating && host.online ? <InlineActionConfirm
       open={confirming}
       triggerLabel={retry ? 'Try update again' : 'Update runner'}
       confirmLabel="Confirm update"
@@ -714,14 +571,7 @@ function UpdatePanel({
     /> : null}
     {host.update_command ? <div className="cn-update-manual">
       <p className="cn-update-manual-title">Update manually</p>
-      <CopyCommand
-        command={host.update_command}
-        copyKey={copyKey}
-        copiedKey={copiedKey}
-        failedKey={failedKey}
-        onCopy={onCopy}
-        onSelect={onSelect}
-      />
+      <CopyCommand command={host.update_command}/>
     </div> : null}
     {updating ? <p className="cn-update-result" role="status">Updating on {host.name}…</p> : null}
     {feedback && !updating ? <p
@@ -733,9 +583,8 @@ function UpdatePanel({
 
 function MachineRow({
   host, expanded, deleting, removeConfirming, renaming, renameValue, renameError, saving,
-  copiedKey, failedKey, onCopy, onExpand, onPair, onRemove, onSelect,
-  onRenameStart, onRenameChange, onRenameSave, onRenameCancel,
-  tails, stopConfirmingId, stoppingId, onStopConfirm, onStopKeep, onStop,
+  onExpand, onPair, onRemove, onRenameStart, onRenameChange, onRenameSave, onRenameCancel,
+  tails, stopConfirmingId, pending, onStopConfirm, onStopKeep, onStop,
   onRemoveConfirm, onRemoveCancel,
   updateConfirming, updating, updateResult, onUpdate, onUpdateConfirm, onUpdateCancel, stale,
   headers,
@@ -818,7 +667,7 @@ function MachineRow({
         command={command}
         tail={tails[command.id]?.tail}
         confirming={stopConfirmingId === command.id}
-        stopping={stoppingId === command.id}
+        stopping={pending.includes(`stop:${command.id}`)}
         stale={stale}
         onConfirm={() => onStopConfirm(command)}
         onKeep={onStopKeep}
@@ -832,10 +681,6 @@ function MachineRow({
       /> : !commands.length ? <p className="cn-activity-empty">No recent commands.</p> : null}
       {host.runner_update_available || updateResult?.hostId === host.id || updating ? <UpdatePanel
         host={host}
-        copiedKey={copiedKey}
-        failedKey={failedKey}
-        onCopy={onCopy}
-        onSelect={onSelect}
         confirming={updateConfirming}
         updating={updating}
         result={updateResult}
@@ -849,14 +694,10 @@ function MachineRow({
         busy={deleting}
         stale={stale || host.busy}
         confirmingRemove={removeConfirming}
-        copiedKey={copiedKey}
-        failedKey={failedKey}
-        onCopy={onCopy}
         onPair={onPair}
         onRemoveOpen={onRemoveConfirm}
         onRemoveCancel={onRemoveCancel}
         onRemove={onRemove}
-        onSelect={onSelect}
       />
     </div>
   </article>
@@ -866,36 +707,15 @@ export default function App({ appId, token }) {
   const [activeTab, setActiveTab] = useState('machines')
   const machinesTab = useRef(null)
   const sharedTab = useRef(null)
-  const onTabKeyDown = event => {
-    let next
-    if (event.key === 'ArrowRight' || event.key === 'ArrowLeft') next = activeTab === 'machines' ? 'shared' : 'machines'
-    else if (event.key === 'Home') next = 'machines'
-    else if (event.key === 'End') next = 'shared'
-    else return
-    event.preventDefault()
-    setActiveTab(next)
-    ;(next === 'machines' ? machinesTab : sharedTab).current?.focus()
-  }
-  const [hosts, setHosts] = useState([])
-  const [outbound, setOutbound] = useState([])
-  const [serviceActive, setServiceActive] = useState(null)
-  const [serviceStale, setServiceStale] = useState(false)
-  const [outboundActive, setOutboundActive] = useState(null)
-  const [outboundStale, setOutboundStale] = useState(false)
-  const [loadNotices, setLoadNotices] = useState([])
   const [newName, setNewName] = useState(DEFAULT_MACHINE_NAME)
   const [addingMachine, setAddingMachine] = useState(false)
   const [pairing, setPairing] = useState(null)
   const [expandedId, setExpandedId] = useState(null)
+  // At most one confirmation is open, across both tabs: { kind, id }.
   const [confirmation, setConfirmation] = useState(null)
   const [renamingId, setRenamingId] = useState(null)
   const [renameValue, setRenameValue] = useState('')
   const [renameError, setRenameError] = useState(null)
-  const [savingId, setSavingId] = useState(null)
-  const [creating, setCreating] = useState(false)
-  const [deletingId, setDeletingId] = useState(null)
-  const [stoppingId, setStoppingId] = useState(null)
-  const [updatingId, setUpdatingId] = useState(null)
   const [updateResult, setUpdateResult] = useState(null)
   // Latest output lines per running command: { [commandId]: { tail } }.
   const [tails, setTails] = useState({})
@@ -903,94 +723,80 @@ export default function App({ appId, token }) {
   const [accessLabel, setAccessLabel] = useState('')
   const [accessCommand, setAccessCommand] = useState('')
   const [sharingOpen, setSharingOpen] = useState(false)
-  const [grantingAccess, setGrantingAccess] = useState(false)
   const [accessAgent, setAccessAgent] = useState(false)
-  const [agentBusyId, setAgentBusyId] = useState(null)
-  const [agentSupported, setAgentSupported] = useState(false)
-  const [revokingOutboundId, setRevokingOutboundId] = useState(null)
-  const [error, setError] = useState(null)
   const readySignalled = useRef(false)
-  const hadServiceSnapshot = useRef(false)
-  const hadOutboundSnapshot = useRef(false)
-  const loadSequence = useRef(0)
-  const { copiedKey, failedKey, copy } = useCopyFeedback()
+  const action = useAction()
+  const pending = key => action.pending.includes(key)
 
   const headers = useCallback((extra = {}) => ({
     Authorization: `Bearer ${token}`,
     ...extra,
   }), [token])
 
+  // Each list polls only while its tab is showing.
+  const onMachines = activeTab === 'machines'
+  const hosts = usePolledList('/api/connect/hosts', 'hosts', 'Connect', headers, {
+    poll: onMachines,
+    // Follow pairing and busy machines closely so their results show promptly.
+    interval: items => pairing || items.some(host => host.busy) ? 1500 : 5000,
+  })
+  const outbound = usePolledList('/api/connect/outbound', 'connections', 'Shared access', headers, { poll: onMachines })
   const directory = useSharedDirectory(headers)
-  const unreadCount = directory.state === 'ready' || directory.state === 'error'
-    ? directory.instances.filter(instance => instance.status === 'invited' && instance.unread === true).length : 0
+  const machinesStale = hosts.status === 'stale'
+  const outboundStale = outbound.status === 'stale'
 
-  const load = useCallback(async () => {
-    const sequence = ++loadSequence.current
-    const [machines, shared] = await Promise.all([
-      loadConnectionList('/api/connect/hosts', 'hosts', 'Connect', headers()),
-      loadConnectionList('/api/connect/outbound', 'connections', 'Shared access', headers()),
-    ])
-    if (sequence !== loadSequence.current) return
-    setServiceActive(previous => machines.ready || (machines.transient && previous === true))
-    setOutboundActive(previous => shared.ready || (shared.transient && previous === true))
-    setServiceStale(!machines.ready && machines.transient && hadServiceSnapshot.current)
-    setOutboundStale(!shared.ready && shared.transient && hadOutboundSnapshot.current)
-    if (machines.ready) {
-      hadServiceSnapshot.current = true
-      setHosts(machines.items)
-    } else if (!machines.transient) setHosts([])
-    if (shared.ready) {
-      hadOutboundSnapshot.current = true
-      setOutbound(shared.items)
-      setAgentSupported(shared.data?.agent_access === true)
-    } else if (!shared.transient) {
-      setOutbound([])
-      setAgentSupported(false)
-    }
-    const notices = [
-      machines.notice && { ...machines.notice, stale: !machines.ready && machines.transient && hadServiceSnapshot.current },
-      shared.notice && { ...shared.notice, stale: !shared.ready && shared.transient && hadOutboundSnapshot.current },
-    ].filter(Boolean)
-    setLoadNotices(notices)
-    for (const notice of notices) {
-      window.mobius.signal('error', { message: notice.title, source: 'load' })
-    }
-    if (!readySignalled.current) {
-      readySignalled.current = true
-      window.mobius.signal('app_ready', { item_count: machines.items.length + shared.items.length })
-    }
-  }, [headers])
+  const selectTab = tab => {
+    if (tab === activeTab) return
+    setActiveTab(tab)
+    setConfirmation(null)
+    if (tab === 'shared') directory.list.reload()
+  }
+  const onTabKeyDown = event => {
+    let next
+    if (event.key === 'ArrowRight' || event.key === 'ArrowLeft') next = activeTab === 'machines' ? 'shared' : 'machines'
+    else if (event.key === 'Home') next = 'machines'
+    else if (event.key === 'End') next = 'shared'
+    else return
+    event.preventDefault()
+    selectTab(next)
+    ;(next === 'machines' ? machinesTab : sharedTab).current?.focus()
+  }
 
-  const hasBusyHost = hosts.some(host => host.busy)
-  const runningKey = (serviceStale ? [] : hosts)
+  const notices = [hosts, outbound].filter(list => list.notice)
+  const noticeTitles = notices.map(list => list.notice.title).join('\n')
+  useEffect(() => {
+    for (const title of noticeTitles.split('\n').filter(Boolean)) {
+      window.mobius.signal('error', { message: title, source: 'load' })
+    }
+  }, [noticeTitles])
+
+  const loaded = hosts.status !== 'loading' && outbound.status !== 'loading'
+  useEffect(() => {
+    if (!loaded || readySignalled.current) return
+    readySignalled.current = true
+    window.mobius.signal('app_ready', { item_count: hosts.items.length + outbound.items.length })
+  }, [loaded, hosts.items, outbound.items])
+
+  const runningKey = (machinesStale ? [] : hosts.items)
     .flatMap(host => activeCommands(host).map(command => `${host.id}/${command.id}`))
     .join(',')
 
   useEffect(() => {
-    load()
-    const timer = setInterval(load, pairing || hasBusyHost ? 1500 : 5000)
-    return () => {
-      clearInterval(timer)
-      loadSequence.current += 1
-    }
-  }, [load, pairing, hasBusyHost])
-
-  useEffect(() => {
-    if (pairing && hosts.some(host => host.id === pairing.id && host.online)) {
+    if (pairing && hosts.items.some(host => host.id === pairing.id && host.online)) {
       setPairing(null)
     }
-  }, [hosts, pairing])
+  }, [hosts.items, pairing])
 
   useEffect(() => {
-    if (confirmation?.kind === 'stop' && !hosts.some(host => (
+    if (confirmation?.kind === 'stop' && !hosts.items.some(host => (
       activeCommands(host).some(command => command.id === confirmation.id)
     ))) setConfirmation(null)
-  }, [hosts, confirmation])
+  }, [hosts.items, confirmation])
 
   // Follow each running command's output while it runs. Only a Möbius that
   // reports a command list has the output route; older ones show no tail.
   useEffect(() => {
-    const running = (serviceStale ? [] : hosts)
+    const running = (machinesStale ? [] : hosts.items)
       .filter(host => Array.isArray(host.active_commands))
       .flatMap(host => host.active_commands.map(command => ({ host, command })))
     const live = new Set(running.map(({ command }) => command.id))
@@ -1041,148 +847,79 @@ export default function App({ appId, token }) {
     }
     // runningKey captures exactly which commands are live.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [runningKey, headers, serviceStale])
+  }, [runningKey, headers, machinesStale])
 
-  const addMachine = useCallback(async () => {
-    if (creating || serviceStale) return
-    setCreating(true)
-    setError(null)
-    try {
-      const response = await fetch('/api/connect/hosts', {
-        method: 'POST',
-        headers: headers({ 'Content-Type': 'application/json' }),
-        body: JSON.stringify({ name: newName.trim() || DEFAULT_MACHINE_NAME }),
-      })
-      if (!response.ok) {
-        throw new Error(await responseError(response, 'Couldn’t add this machine.'))
-      }
-      setPairing(await response.json())
-      setNewName(DEFAULT_MACHINE_NAME)
-      setAddingMachine(false)
-      window.mobius.signal('item_created', { type: 'machine' })
-      await load()
-    } catch (cause) {
-      setError(cause.message || 'Couldn’t add this machine.')
-    } finally {
-      setCreating(false)
-    }
-  }, [creating, headers, load, newName, serviceStale])
+  const addMachine = () => action.run('add-machine', async () => {
+    const response = await fetch('/api/connect/hosts', {
+      method: 'POST',
+      headers: headers({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ name: newName.trim() || DEFAULT_MACHINE_NAME }),
+    })
+    if (!response.ok) throw await serverError(response)
+    setPairing(await response.json())
+    setNewName(DEFAULT_MACHINE_NAME)
+    setAddingMachine(false)
+    window.mobius.signal('item_created', { type: 'machine' })
+    await hosts.reload()
+  }, 'Couldn’t add this machine.')
 
-  const showCommand = useCallback(async (id) => {
-    if (serviceStale) return
-    setError(null)
-    try {
-      const response = await fetch(`/api/connect/hosts/${id}/pairing`, {
-        headers: headers(),
-      })
-      if (!response.ok) {
-        throw new Error(await responseError(response, 'Couldn’t refresh the pairing command.'))
-      }
-      setPairing(await response.json())
-    } catch (cause) {
-      setError(cause.message || 'Couldn’t refresh the pairing command.')
-    }
-  }, [headers, serviceStale])
+  const showCommand = id => action.run(`pairing:${id}`, async () => {
+    const response = await fetch(`/api/connect/hosts/${id}/pairing`, { headers: headers() })
+    if (!response.ok) throw await serverError(response)
+    setPairing(await response.json())
+  }, 'Couldn’t refresh the pairing command.')
 
-  const removeMachine = useCallback(async (host) => {
-    if (deletingId || serviceStale || host.busy) return
-    setDeletingId(host.id)
-    setError(null)
-    try {
-      const force = host.paired && !host.online ? '?force=true' : ''
-      const response = await fetch(`/api/connect/hosts/${host.id}${force}`, {
-        method: 'DELETE',
-        headers: headers(),
-      })
-      if (!response.ok && response.status !== 404) {
-        throw new Error(await responseError(response, 'Couldn’t disconnect this machine.'))
-      }
-      if (pairing?.id === host.id) setPairing(null)
-      setHosts(current => current.filter(item => item.id !== host.id))
-      setExpandedId(null)
-      setConfirmation(null)
-      window.mobius.signal('item_deleted')
-      await load()
-    } catch (cause) {
-      setError(cause.message || 'Couldn’t disconnect this machine.')
-    } finally {
-      setDeletingId(null)
-    }
-  }, [deletingId, headers, load, pairing, serviceStale])
+  const removeMachine = host => action.run(`remove:${host.id}`, async () => {
+    const force = host.paired && !host.online ? '?force=true' : ''
+    const response = await fetch(`/api/connect/hosts/${host.id}${force}`, { method: 'DELETE', headers: headers() })
+    if (!response.ok && response.status !== 404) throw await serverError(response)
+    setPairing(current => current?.id === host.id ? null : current)
+    hosts.update(items => items.filter(item => item.id !== host.id))
+    setExpandedId(null)
+    setConfirmation(null)
+    window.mobius.signal('item_deleted')
+    await hosts.reload()
+  }, 'Couldn’t disconnect this machine.')
 
-  const startRename = useCallback((host) => {
-    setRenameValue(host.name)
-    setRenameError(null)
-    setRenamingId(host.id)
-  }, [])
-
-  const cancelRename = useCallback(() => {
-    if (savingId) return
+  const cancelRename = () => {
     setRenameError(null)
     setRenamingId(null)
-  }, [savingId])
+  }
 
-  const saveRename = useCallback(async (host) => {
+  const saveRename = host => {
     const name = renameValue.trim()
-    if (!name) {
-      setRenameError('Enter a machine name.')
-      return
-    }
-    if (name === host.name) {
-      setRenameError(null)
-      setRenamingId(null)
-      return
-    }
-    if (savingId || serviceStale) return
-    setSavingId(host.id)
+    if (!name) return setRenameError('Enter a machine name.')
+    if (name === host.name) return cancelRename()
     setRenameError(null)
-    setError(null)
-    try {
-      const response = await fetch(`/api/connect/hosts/${host.id}`, {
-        method: 'PATCH',
-        headers: headers({ 'Content-Type': 'application/json' }),
-        body: JSON.stringify({ name }),
-      })
-      if (!response.ok) {
-        throw new Error(await responseError(response, 'Couldn’t rename this machine.'))
+    // A rename failure shows in the row being edited, not in the page banner.
+    return action.run(`rename:${host.id}`, async () => {
+      try {
+        const response = await fetch(`/api/connect/hosts/${host.id}`, {
+          method: 'PATCH',
+          headers: headers({ 'Content-Type': 'application/json' }),
+          body: JSON.stringify({ name }),
+        })
+        if (!response.ok) throw await serverError(response)
+        const updated = await response.json()
+        hosts.update(items => items.map(item => item.id === host.id ? { ...item, name: updated.name || name } : item))
+        setRenamingId(null)
+      } catch (cause) {
+        setRenameError(failureMessage(cause, 'Couldn’t rename this machine.'))
       }
-      const updated = await response.json()
-      setHosts(current => current.map(item => (
-        item.id === host.id ? { ...item, name: updated.name || name } : item
-      )))
-      setRenamingId(null)
-    } catch (cause) {
-      setRenameError(cause.message || 'Couldn’t rename this machine.')
-    } finally {
-      setSavingId(null)
-    }
-  }, [renameValue, savingId, headers, serviceStale])
+    })
+  }
 
-  const stopCommand = useCallback(async (host, command) => {
-    const path = cancelCommandPath(host, command)
-    if (!path || stoppingId || serviceStale) return
-    setStoppingId(command.id)
-    setError(null)
-    try {
-      const response = await fetch(path, { method: 'POST', headers: headers() })
-      if (!response.ok && response.status !== 404) {
-        throw new Error(await responseError(response, 'Couldn’t stop this command.'))
-      }
-      setConfirmation(null)
-      await load()
-    } catch (cause) {
-      setError(cause.message || 'Couldn’t stop this command.')
-    } finally {
-      setStoppingId(null)
-    }
-  }, [headers, load, stoppingId, serviceStale])
+  const stopCommand = (host, command) => action.run(`stop:${command.id}`, async () => {
+    const response = await fetch(cancelCommandPath(host, command), { method: 'POST', headers: headers() })
+    if (!response.ok && response.status !== 404) throw await serverError(response)
+    setConfirmation(null)
+    await hosts.reload()
+  }, 'Couldn’t stop this command.')
 
-  const runRunnerUpdate = useCallback(async (host) => {
-    if (!host.update_command || !host.online || host.busy || updatingId || serviceStale) return
-    setUpdatingId(host.id)
+  // An update reports its outcome in the machine's update panel, not the banner.
+  const runRunnerUpdate = host => action.run(`update:${host.id}`, async () => {
     setConfirmation(null)
     setUpdateResult(null)
-    setError(null)
     try {
       const response = await fetch(`/api/connect/hosts/${host.id}/exec`, {
         method: 'POST',
@@ -1202,93 +939,49 @@ export default function App({ appId, token }) {
         stdout: result.stdout || '',
         stderr: result.stderr || '',
       })
-      await load()
+      await hosts.reload()
     } catch (cause) {
-      setUpdateResult({ hostId: host.id, errorKind: 'request', errorMessage: cause.message || 'Couldn’t update this runner.' })
-    } finally {
-      setUpdatingId(null)
+      setUpdateResult({ hostId: host.id, errorKind: 'request', errorMessage: failureMessage(cause, 'Couldn’t update this runner.') })
     }
-  }, [headers, load, updatingId, serviceStale])
+  })
 
-  const grantOutboundAccess = useCallback(async () => {
-    const label = accessLabel.trim()
-    const command = accessCommand.trim()
-    if (!label || !command || grantingAccess || outboundStale) return
-    setGrantingAccess(true)
-    setError(null)
-    try {
-      const response = await fetch('/api/connect/outbound', {
-        method: 'POST',
-        headers: headers({ 'Content-Type': 'application/json' }),
-        body: JSON.stringify({ label, command, agent: accessAgent }),
-      })
-      if (!response.ok) {
-        throw new Error(await responseError(response, 'Couldn’t grant access.'))
-      }
-      setAccessLabel('')
-      setAccessCommand('')
-      setAccessAgent(false)
-      setSharingOpen(false)
-      window.mobius.signal('item_created', { type: 'outbound_access' })
-      await load()
-    } catch (cause) {
-      setError(cause.message || 'Couldn’t grant access.')
-    } finally {
-      setGrantingAccess(false)
-    }
-  }, [accessAgent, accessCommand, accessLabel, grantingAccess, headers, load, outboundStale])
+  const closeSharing = () => {
+    setSharingOpen(false)
+    setAccessLabel('')
+    setAccessCommand('')
+    setAccessAgent(false)
+  }
 
-  const setOutboundAgent = useCallback(async (connection, agent) => {
-    if (agentBusyId || outboundStale) return
-    setAgentBusyId(connection.id)
-    setError(null)
-    try {
-      const response = await fetch(`/api/connect/outbound/${connection.id}`, {
-        method: 'PATCH',
-        headers: headers({ 'Content-Type': 'application/json' }),
-        body: JSON.stringify({ agent }),
-      })
-      if (!response.ok) {
-        throw new Error(await responseError(response, 'Couldn’t change full access.'))
-      }
-      await load()
-    } catch (cause) {
-      setError(cause.message || 'Couldn’t change full access.')
-    } finally {
-      setAgentBusyId(null)
-    }
-  }, [agentBusyId, headers, load, outboundStale])
+  const grantOutboundAccess = () => action.run('grant-access', async () => {
+    const response = await fetch('/api/connect/outbound', {
+      method: 'POST',
+      headers: headers({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ label: accessLabel.trim(), command: accessCommand.trim(), agent: accessAgent }),
+    })
+    if (!response.ok) throw await serverError(response)
+    closeSharing()
+    window.mobius.signal('item_created', { type: 'outbound_access' })
+    await outbound.reload()
+  }, 'Couldn’t grant access.')
 
-  const revokeOutboundAccess = useCallback(async (connection) => {
-    if (revokingOutboundId || outboundStale) return
-    setRevokingOutboundId(connection.id)
-    setError(null)
-    try {
-      const response = await fetch(`/api/connect/outbound/${connection.id}`, {
-        method: 'DELETE',
-        headers: headers(),
-      })
-      if (!response.ok && response.status !== 404) {
-        throw new Error(await responseError(response, 'Couldn’t confirm that access was revoked.'))
-      }
-      setConfirmation(null)
-      setOutbound(current => current.filter(item => item.id !== connection.id))
-      window.mobius.signal('item_deleted', { type: 'outbound_access' })
-      await load()
-    } catch (cause) {
-      setError(cause.message || 'Couldn’t revoke this access.')
-    } finally {
-      setRevokingOutboundId(null)
-    }
-  }, [headers, load, revokingOutboundId, outboundStale])
+  const setOutboundAgent = (connection, agent) => action.run(`agent:${connection.id}`, async () => {
+    const response = await fetch(`/api/connect/outbound/${connection.id}`, {
+      method: 'PATCH',
+      headers: headers({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ agent }),
+    })
+    if (!response.ok) throw await serverError(response)
+    await outbound.reload()
+  }, 'Couldn’t change full access.')
 
-  const selectCommand = useCallback((event) => {
-    const selection = window.getSelection()
-    const range = document.createRange()
-    range.selectNodeContents(event.currentTarget)
-    selection.removeAllRanges()
-    selection.addRange(range)
-  }, [])
+  const revokeOutboundAccess = connection => action.run(`revoke:${connection.id}`, async () => {
+    const response = await fetch(`/api/connect/outbound/${connection.id}`, { method: 'DELETE', headers: headers() })
+    if (!response.ok && response.status !== 404) throw await serverError(response)
+    setConfirmation(null)
+    outbound.update(items => items.filter(item => item.id !== connection.id))
+    window.mobius.signal('item_deleted', { type: 'outbound_access' })
+    await outbound.reload()
+  }, 'Couldn’t confirm that access was revoked.')
 
   return <div className="cn-root">
     <style>{CSS}</style>
@@ -1303,32 +996,32 @@ export default function App({ appId, token }) {
     </header>
     <main className="cn-shell">
       <div aria-live="polite">
-        {error ? <div className="cn-message cn-error">{error}</div> : null}
-        {loadNotices.map(notice => <div className="cn-message cn-notice" key={notice.title}>
-          <strong>{notice.title}</strong>
-          {notice.message}{notice.stale ? ' Showing the last successful list; remote actions are paused until it refreshes.' : ''}
+        {action.error ? <div className="cn-message cn-error">{action.error}</div> : null}
+        {notices.map(list => <div className="cn-message cn-notice" key={list.notice.title}>
+          <strong>{list.notice.title}</strong>
+          {list.notice.message}{list.status === 'stale' ? ' Showing the last successful list; remote actions are paused until it refreshes.' : ''}
         </div>)}
       </div>
 
-      {serviceActive === null ? <div className="cn-loading" role="status">Loading Connect…</div> : null}
+      {hosts.status === 'loading' ? <div className="cn-loading" role="status">Loading Connect…</div> : null}
 
       <div className="cn-tabs" role="tablist" aria-label="Connect sections" onKeyDown={onTabKeyDown}>
-        <button className="cn-tab" type="button" role="tab" id="cn-tab-machines" ref={machinesTab} tabIndex={activeTab === 'machines' ? 0 : -1} aria-controls="cn-panel-machines" aria-selected={activeTab === 'machines'} onClick={() => setActiveTab('machines')}>Machines</button>
-        <button className="cn-tab" type="button" role="tab" id="cn-tab-shared" ref={sharedTab} tabIndex={activeTab === 'shared' ? 0 : -1} aria-controls="cn-panel-shared" aria-selected={activeTab === 'shared'} onClick={() => setActiveTab('shared')}>Shared Möbius{activeTab === 'machines' && unreadCount > 0 ? <span className="cn-tab-badge" aria-label={`${unreadCount} unread invitations`}>{unreadCount}</span> : null}</button>
+        <button className="cn-tab" type="button" role="tab" id="cn-tab-machines" ref={machinesTab} tabIndex={onMachines ? 0 : -1} aria-controls="cn-panel-machines" aria-selected={onMachines} onClick={() => selectTab('machines')}>Machines</button>
+        <button className="cn-tab" type="button" role="tab" id="cn-tab-shared" ref={sharedTab} tabIndex={onMachines ? -1 : 0} aria-controls="cn-panel-shared" aria-selected={!onMachines} onClick={() => selectTab('shared')}>Shared Möbius{onMachines && directory.unread > 0 ? <span className="cn-tab-badge" aria-label={`${directory.unread} unread invitations`}>{directory.unread}</span> : null}</button>
       </div>
-      <div className="cn-tab-panel" id="cn-panel-machines" role="tabpanel" aria-labelledby="cn-tab-machines" hidden={activeTab !== 'machines'}>
-      {serviceActive === true ? <section className="cn-section cn-section-first" aria-labelledby="cn-machines">
+      <div className="cn-tab-panel" id="cn-panel-machines" role="tabpanel" aria-labelledby="cn-tab-machines" hidden={!onMachines}>
+      {hosts.status === 'ready' || machinesStale ? <section className="cn-section cn-section-first" aria-labelledby="cn-machines">
         <div className="cn-section-head">
           <div className="cn-section-heading">
             <h2 className="cn-secttitle" id="cn-machines">Machines you control</h2>
-            <span className="cn-count">{hosts.length}</span>
+            <span className="cn-count">{hosts.items.length}</span>
           </div>
-          <button className="cn-btn cn-btn-ghost cn-btn-sm" onClick={() => setAddingMachine(open => !open)} disabled={serviceStale && !addingMachine}>
+          <button className="cn-btn cn-btn-ghost cn-btn-sm" onClick={() => setAddingMachine(open => !open)} disabled={machinesStale && !addingMachine}>
             {addingMachine ? 'Cancel' : <><Plus size={16}/>Add machine</>}
           </button>
         </div>
 
-        {addingMachine ? <div className="cn-inline-form cn-machine-form">
+        {addingMachine ? <form className="cn-inline-form cn-machine-form" onSubmit={event => { event.preventDefault(); addMachine() }}>
           <label className="cn-field">
             <span className="cn-label">Name</span>
             <input
@@ -1338,44 +1031,36 @@ export default function App({ appId, token }) {
               maxLength={80}
               autoFocus
               onChange={event => setNewName(event.target.value)}
-              onKeyDown={event => { if (event.key === 'Enter') addMachine() }}
             />
           </label>
-          <button className="cn-btn" onClick={addMachine} disabled={creating || serviceStale}>
-            {creating ? 'Creating…' : 'Continue'}
+          <button className="cn-btn" type="submit" disabled={pending('add-machine') || machinesStale}>
+            {pending('add-machine') ? 'Creating…' : 'Continue'}
           </button>
-        </div> : null}
+        </form> : null}
 
         {pairing ? <PairingPanel
-          stale={serviceStale}
+          stale={machinesStale}
           pairing={pairing}
-          copiedKey={copiedKey}
-          failedKey={failedKey}
-          onCopy={copy}
           onDone={() => setPairing(null)}
           onRefresh={() => showCommand(pairing.id)}
-          onSelect={selectCommand}
         /> : null}
 
-        {hosts.length ? <div className="cn-list">
-          {hosts.map(host => <MachineRow
+        {hosts.items.length ? <div className="cn-list">
+          {hosts.items.map(host => <MachineRow
             key={host.id}
             host={host}
             headers={headers}
-            stale={serviceStale}
+            stale={machinesStale}
             expanded={expandedId === host.id}
-            deleting={deletingId === host.id}
+            deleting={pending(`remove:${host.id}`)}
             removeConfirming={confirmation?.kind === 'remove' && confirmation.id === host.id}
             renaming={renamingId === host.id}
             renameValue={renameValue}
             renameError={renamingId === host.id ? renameError : null}
-            saving={savingId === host.id}
+            saving={pending(`rename:${host.id}`)}
             tails={tails}
             stopConfirmingId={confirmation?.kind === 'stop' ? confirmation.id : null}
-            stoppingId={stoppingId}
-            copiedKey={copiedKey}
-            failedKey={failedKey}
-            onCopy={copy}
+            pending={action.pending}
             onExpand={() => {
               setConfirmation(null)
               setRenamingId(null)
@@ -1385,10 +1070,11 @@ export default function App({ appId, token }) {
             onRemove={() => removeMachine(host)}
             onRemoveConfirm={() => setConfirmation({ kind: 'remove', id: host.id })}
             onRemoveCancel={() => setConfirmation(null)}
-            onSelect={selectCommand}
             onRenameStart={() => {
               setConfirmation(null)
-              startRename(host)
+              setRenameValue(host.name)
+              setRenameError(null)
+              setRenamingId(host.id)
             }}
             onRenameChange={value => {
               setRenameError(null)
@@ -1404,7 +1090,7 @@ export default function App({ appId, token }) {
             onStopKeep={() => setConfirmation(null)}
             onStop={command => stopCommand(host, command)}
             updateConfirming={confirmation?.kind === 'update' && confirmation.id === host.id}
-            updating={updatingId === host.id}
+            updating={pending(`update:${host.id}`)}
             updateResult={updateResult}
             onUpdate={() => {
               setExpandedId(host.id)
@@ -1417,25 +1103,18 @@ export default function App({ appId, token }) {
         </div> : <div className="cn-empty-row">No machines added.</div>}
       </section> : null}
 
-      {outboundActive === true ? <OutboundAccess
-        connections={outbound}
+      {outbound.status === 'ready' || outboundStale ? <OutboundAccess
+        connections={outbound.items}
         stale={outboundStale}
         open={sharingOpen}
         label={accessLabel}
         command={accessCommand}
-        granting={grantingAccess}
         agent={accessAgent}
-        agentSupported={agentSupported}
-        agentBusyId={agentBusyId}
+        agentSupported={outbound.data?.agent_access === true}
+        pending={action.pending}
         confirmingId={confirmation?.kind === 'revoke' ? confirmation.id : null}
-        revokingId={revokingOutboundId}
         onOpen={() => setSharingOpen(true)}
-        onCancel={() => {
-          setSharingOpen(false)
-          setAccessLabel('')
-          setAccessCommand('')
-          setAccessAgent(false)
-        }}
+        onCancel={closeSharing}
         onLabel={setAccessLabel}
         onCommand={setAccessCommand}
         onAgent={setAccessAgent}
@@ -1446,8 +1125,8 @@ export default function App({ appId, token }) {
         onRevoke={revokeOutboundAccess}
       /> : null}
       </div>
-      <div className="cn-tab-panel cn-shared-panel" id="cn-panel-shared" role="tabpanel" aria-labelledby="cn-tab-shared" hidden={activeTab !== 'shared'}>
-        <BrowserAccessSection headers={headers}/>
+      <div className="cn-tab-panel cn-shared-panel" id="cn-panel-shared" role="tabpanel" aria-labelledby="cn-tab-shared" hidden={onMachines}>
+        <BrowserAccessSection headers={headers} poll={!onMachines} confirmation={confirmation} setConfirmation={setConfirmation}/>
         <SharedWithMe directory={directory}/>
       </div>
     </main>

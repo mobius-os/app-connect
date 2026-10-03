@@ -8,16 +8,22 @@ person** to enter a verified mobius.you handle. A new recipient sees an unread
 invitation in their account inbox; the tab badge shows unread invitations even
 while Machines is active. **Accept** agrees to the invitation, while **Not now**
 marks it read without removing the later **Accept** action. Accepted entries
-show **Open**. The account holder signs in from each browser; discovery alone
-does not grant access, and Open accepts only the exact HTTPS account-start route
-on the advertised origin.
+show **Open**, which goes to the account sign-in link this Möbius built for that
+share. The account holder signs in from each browser; discovery alone does not
+grant access. If the owner relinks their mobius.you account, earlier account
+shares show **Needs a new invitation**; **Invite again** registers them anew.
 
 An owner can revoke access. Settled revoked rows disappear, but rows awaiting
 stop confirmation or directory cleanup remain visible and retryable. A failed
-refresh preserves the last list but pauses mutations and Open. Connect also
-retains one-use, owner-labelled invitations as a separate legacy option;
-labels do not verify identities, so deliver those links privately. They expire
-after one day, and reissuing one does not end existing sessions.
+refresh preserves the last list but pauses changes and Open. Connect also
+retains one-use, owner-labelled invitations as a separate option for people
+without a mobius.you account; labels do not verify identities, so deliver those
+links privately. They expire after one day, and reissuing one does not end
+existing sessions.
+
+Lists refresh only while their tab is showing. **Shared with me** reads through
+to mobius.you, so it refreshes once a minute, when the tab opens, and when the
+page becomes visible again.
 
 Sharing requires a directly reachable HTTPS instance. It is not screen sharing,
 a private-network tunnel, or isolated accounts. Guests can read shared data and
@@ -29,8 +35,8 @@ changes; a remote command may still be stopping until its machine confirms it.
 With Node.js 20+ and Python 3 installed, run `npm ci` to install the pinned,
 test-only JavaScript dependencies. Install Playwright's Chromium once with
 `npx playwright install chromium`, then run `npm test` and
-`python3 -m unittest test_mach.py`. The browser-access tests use an isolated,
-intercepted fixture and never contact a live Connect service. If Chromium is
+`python3 -m unittest test_mach.py`. The browser tests use an isolated,
+intercepted fixture (`fixture.mjs`) and never contact a live Connect service. If Chromium is
 already installed outside Playwright's browser cache, set
 `CONNECT_TEST_BROWSER_EXECUTABLE=/path/to/chrome` when running `npm test`.
 Without that override, the tests use Playwright's Chromium.

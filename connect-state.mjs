@@ -58,15 +58,6 @@ export function runnerUpdateFeedback(host, result, stale = false) {
   return feedback('waiting', 'Installer finished; Connect has not confirmed the updated runner yet.')
 }
 
-export function commandCapabilities(command) {
-  const state = command?.state || 'dispatching'
-  return {
-    canStop: Boolean(command?.id),
-    stopping: state === 'canceling',
-    state,
-  }
-}
-
 function commandPath(host, command, suffix) {
   const hostId = host?.id
   const requestId = command?.id

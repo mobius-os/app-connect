@@ -1,17 +1,27 @@
 # Connect
 
-## Trusted browser access
+## Shared Möbius
 
-On a platform version that supports browser sharing, Connect can invite a
-trusted person into the same chats, apps and data, with independent navigation.
-Access lasts until revoked. Recipient labels are assigned by the owner, not
-verified account identities. Deliver each one-use invitation privately; the
-link expires after one day. A new invitation can sign in another browser
-without ending existing sessions.
+Connect has **Machines** and **Shared Möbius** tabs. The latter shows **People
+with access** first and **Shared with me** second. An owner can use **Invite
+person** to enter a verified mobius.you handle. A new recipient sees an unread
+invitation in their account inbox; the tab badge shows unread invitations even
+while Machines is active. **Accept** agrees to the invitation, while **Not now**
+marks it read without removing the later **Accept** action. Accepted entries
+show **Open**. The account holder signs in from each browser; discovery alone
+does not grant access, and Open accepts only the exact HTTPS account-start route
+on the advertised origin.
 
-This requires a directly reachable HTTPS instance. It is not screen sharing,
-a private-network tunnel, or isolated accounts. Guests can take powerful
-workspace actions. Revocation ends access but cannot undo copied data or past
+An owner can revoke access. Settled revoked rows disappear, but rows awaiting
+stop confirmation or directory cleanup remain visible and retryable. A failed
+refresh preserves the last list but pauses mutations and Open. Connect also
+retains one-use, owner-labelled invitations as a separate legacy option;
+labels do not verify identities, so deliver those links privately. They expire
+after one day, and reissuing one does not end existing sessions.
+
+Sharing requires a directly reachable HTTPS instance. It is not screen sharing,
+a private-network tunnel, or isolated accounts. Guests can read shared data and
+take powerful workspace actions. Revocation cannot undo copied data or past
 changes; a remote command may still be stopping until its machine confirms it.
 
 ## Tests

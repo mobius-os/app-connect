@@ -213,11 +213,6 @@ export default function BrowserAccessSection({ headers }) {
         headers: headers({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ label: recipientLabel }),
       })
-      if (response.status === 403 || response.status === 404) {
-        terminal.current = true
-        setState(response.status === 403 ? 'forbidden' : 'unavailable')
-        return
-      }
       if (!response.ok) throw new Error('create')
       const result = await response.json()
       if (presentInvitation(result, recipientLabel)) setLabel('')
@@ -241,11 +236,6 @@ export default function BrowserAccessSection({ headers }) {
         method: 'POST', headers: headers({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ recipient_handle: handle }),
       })
-      if (response.status === 403 || response.status === 404) {
-        terminal.current = true
-        setState(response.status === 403 ? 'forbidden' : 'unavailable')
-        return
-      }
       if (!response.ok) throw new Error('create')
       const result = await response.json()
       if (!result?.grant?.id || result.grant.kind !== 'account') throw new Error('shape')
@@ -273,11 +263,6 @@ export default function BrowserAccessSection({ headers }) {
         method: 'POST',
         headers: headers(),
       })
-      if (response.status === 403) {
-        terminal.current = true
-        setState('forbidden')
-        return
-      }
       if (response.status === 404) {
         setActionError('Couldn’t create a new invitation for this person. The grant or invitation route may be unavailable; check the list before trying again.')
         return
@@ -306,11 +291,6 @@ export default function BrowserAccessSection({ headers }) {
         method: 'DELETE',
         headers: headers(),
       })
-      if (response.status === 403) {
-        terminal.current = true
-        setState('forbidden')
-        return
-      }
       if (response.status === 202) {
         const result = await response.json()
         if (result?.revoked !== true) throw new Error('revoke')

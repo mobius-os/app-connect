@@ -238,6 +238,30 @@ test('account grant posts a handle and optional name, displays identity, and nev
   } finally { await browser.close() }
 })
 
+for (const [reason, detail] of [
+  ['unknown handle', 'unknown_handle'],
+  ['unsupported account route', 'Not Found'],
+]) test(`account ${reason} failure leaves existing grants and polling available`, async () => {
+  const { browser, page, requests } = await fixture(request => request.method() === 'POST' && request.url().endsWith('/accounts')
+    ? { status: 404, body: { detail } }
+    : { body: { grants: [grant] } })
+  try {
+    await page.getByText('Alex', { exact: true }).waitFor()
+    await page.getByRole('button', { name: 'Invite person' }).click()
+    await page.getByRole('textbox', { name: 'mobius.you handle' }).fill('missing-person')
+    await page.getByRole('button', { name: 'Invite', exact: true }).click()
+    await page.getByText('Couldn’t confirm account access was added.').waitFor()
+    assert.equal(await page.getByText('Alex', { exact: true }).count(), 1)
+    assert.equal(await page.getByRole('button', { name: 'Revoke', exact: true }).isDisabled(), false)
+    assert.equal(await page.getByRole('textbox', { name: 'mobius.you handle' }).inputValue(), 'missing-person')
+    if (reason === 'unknown handle') {
+      await page.waitForTimeout(5200)
+      assert.ok(requests.filter(item => item.method === 'GET').length >= 2, 'grant list continues polling')
+      assert.equal(await page.getByText('Alex', { exact: true }).count(), 1)
+    }
+  } finally { await browser.close() }
+})
+
 test('directory cleanup pending stays visible and retryable after local account revoke', async () => {
   const account = { id: 'a1', kind: 'account', recipient_handle: 'friend', status: 'active' }
   const { browser, page } = await fixture(request => request.method() === 'DELETE'

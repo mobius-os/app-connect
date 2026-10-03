@@ -5,7 +5,7 @@ import { chromium } from 'playwright'
 
 const bundle = await build({
   stdin: {
-    contents: `import React from 'react'; import {createRoot} from 'react-dom/client'; import {SharedWithMe, useSharedDirectory} from './BrowserAccessSection.jsx'; function Fixture(){ const directory = useSharedDirectory(() => ({Authorization: 'Bearer fixture'})); return <SharedWithMe directory={directory}/> } createRoot(document.getElementById('root')).render(<Fixture/>);`,
+    contents: `import React from 'react'; import {createRoot} from 'react-dom/client'; import {SharedWithMe, useSharedDirectory} from './BrowserAccessSection.jsx'; const headers = () => ({Authorization: 'Bearer fixture'}); function Fixture(){ const directory = useSharedDirectory(headers); return <SharedWithMe directory={directory}/> } createRoot(document.getElementById('root')).render(<Fixture/>);`,
     resolveDir: new URL('.', import.meta.url).pathname,
     loader: 'jsx',
   },
@@ -21,9 +21,12 @@ async function fixture(body, status = 200, respond = null) {
     ...(process.env.CONNECT_TEST_BROWSER_EXECUTABLE ? { executablePath: process.env.CONNECT_TEST_BROWSER_EXECUTABLE } : {}) })
   const page = await browser.newPage()
   const requests = []
+  let listGets = 0
   await page.route('http://fixture.test/**', async route => {
-    if (new URL(route.request().url()).pathname === '/api/connect/browser-access/shared')
+    if (new URL(route.request().url()).pathname === '/api/connect/browser-access/shared') {
+      listGets += 1
       await route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(typeof body === 'function' ? body() : body) })
+    }
     else if (new URL(route.request().url()).pathname === '/api/connect/browser-access/shared/respond') {
       const data = route.request().postDataJSON()
       requests.push(data)
@@ -33,8 +36,19 @@ async function fixture(body, status = 200, respond = null) {
   })
   await page.goto('http://fixture.test/')
   await page.addScriptTag({ content: bundle.outputFiles[0].text })
-  return { browser, page, requests }
+  return { browser, page, requests, getListGets: () => listGets }
 }
+
+test('shared list polls once on mount and at the ordinary five-second interval', async () => {
+  const { browser, page, getListGets } = await fixture({ instances: [] })
+  try {
+    await page.getByText('No Möbius shared with this account yet.').waitFor()
+    await page.waitForTimeout(300)
+    assert.equal(getListGets(), 1)
+    await page.waitForTimeout(5000)
+    assert.equal(getListGets(), 2)
+  } finally { await browser.close() }
+})
 
 test('unlinked state points to Identity rather than opening anything', async () => {
   const { browser, page } = await fixture({ detail: 'Link your mobius.you account in Identity first.' }, 409)

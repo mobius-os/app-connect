@@ -23,7 +23,7 @@ export function useSharedDirectory(headers) {
     const updated = (await response.json())?.instance
     if (!sameShare(updated, instance)) throw new Error('Unexpected response')
     list.update(items => items.map(item => sameShare(item, instance) ? updated : item))
-  }, 'Couldn’t confirm your response. Try again after the list refreshes.')
+  }, 'Couldn’t confirm your response. Try again.')
   return {
     list, action, respond,
     unlinked: list.code === 'account_unlinked' || (list.httpStatus === 409 && list.notice?.message === UNLINKED_DETAIL),

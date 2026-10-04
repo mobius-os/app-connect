@@ -10,8 +10,7 @@ while Machines is active. **Accept** agrees to the invitation, while **Not now**
 marks it read without removing the later **Accept** action. Accepted entries
 show **Open**, which goes to the account sign-in link this Möbius built for that
 share. The account holder signs in from each browser; discovery alone does not
-grant access. If the owner relinks their mobius.you account, earlier account
-shares show **Needs a new invitation**; **Invite again** registers them anew.
+grant access.
 
 An owner can revoke access. Settled revoked rows disappear, but rows awaiting
 stop confirmation or directory cleanup remain visible and retryable. A failed

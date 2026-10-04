@@ -19,7 +19,9 @@ export async function responseError(response, fallback) {
 export class ServerError extends Error {}
 
 export async function serverError(response) {
-  return new ServerError(await responseError(response, ''))
+  // A refusal without a reason is still a known outcome; only 5xx stays unknown.
+  const fallback = response.status < 500 ? `Möbius refused this request (HTTP ${response.status}).` : ''
+  return new ServerError(await responseError(response, fallback))
 }
 
 export function failureMessage(cause, fallback) {

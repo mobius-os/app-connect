@@ -716,7 +716,9 @@ export default function App({ appId, token }) {
   const [renamingId, setRenamingId] = useState(null)
   const [renameValue, setRenameValue] = useState('')
   const [renameError, setRenameError] = useState(null)
-  const [updateResult, setUpdateResult] = useState(null)
+  // The latest runner update result per machine: { [hostId]: result }.
+  const [updateResults, setUpdateResults] = useState({})
+  const setUpdateResult = (hostId, result) => setUpdateResults(current => ({ ...current, [hostId]: result }))
   // Latest output lines per running command: { [commandId]: { tail } }.
   const [tails, setTails] = useState({})
   const outputCursors = useRef({})
@@ -777,7 +779,8 @@ export default function App({ appId, token }) {
     window.mobius.signal('app_ready', { item_count: hosts.items.length + outbound.items.length })
   }, [loaded, hosts.items, outbound.items])
 
-  const runningKey = (machinesStale ? [] : hosts.items)
+  // Output tails follow only while the Machines tab shows them.
+  const runningKey = (machinesStale || !onMachines ? [] : hosts.items)
     .flatMap(host => activeCommands(host).map(command => `${host.id}/${command.id}`))
     .join(',')
 
@@ -796,7 +799,7 @@ export default function App({ appId, token }) {
   // Follow each running command's output while it runs. Only a Möbius that
   // reports a command list has the output route; older ones show no tail.
   useEffect(() => {
-    const running = (machinesStale ? [] : hosts.items)
+    const running = (machinesStale || !onMachines ? [] : hosts.items)
       .filter(host => Array.isArray(host.active_commands))
       .flatMap(host => host.active_commands.map(command => ({ host, command })))
     const live = new Set(running.map(({ command }) => command.id))
@@ -847,7 +850,7 @@ export default function App({ appId, token }) {
     }
     // runningKey captures exactly which commands are live.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [runningKey, headers, machinesStale])
+  }, [runningKey, headers, machinesStale, onMachines])
 
   const addMachine = () => action.run('add-machine', async () => {
     const response = await fetch('/api/connect/hosts', {
@@ -919,7 +922,7 @@ export default function App({ appId, token }) {
   // An update reports its outcome in the machine's update panel, not the banner.
   const runRunnerUpdate = host => action.run(`update:${host.id}`, async () => {
     setConfirmation(null)
-    setUpdateResult(null)
+    setUpdateResult(host.id, null)
     try {
       const response = await fetch(`/api/connect/hosts/${host.id}/exec`, {
         method: 'POST',
@@ -928,11 +931,11 @@ export default function App({ appId, token }) {
       })
       if (!response.ok) {
         const failure = await responseErrorData(response, `Update request didn’t complete (HTTP ${response.status}).`)
-        setUpdateResult({ hostId: host.id, code: failure.code, errorMessage: failure.detail })
+        setUpdateResult(host.id, { hostId: host.id, code: failure.code, errorMessage: failure.detail })
         return
       }
       const result = await response.json()
-      setUpdateResult({
+      setUpdateResult(host.id, {
         hostId: host.id,
         exitCode: result.exit_code,
         outcome: result.outcome,
@@ -941,7 +944,7 @@ export default function App({ appId, token }) {
       })
       await hosts.reload()
     } catch (cause) {
-      setUpdateResult({ hostId: host.id, errorKind: 'request', errorMessage: failureMessage(cause, 'Couldn’t update this runner.') })
+      setUpdateResult(host.id, { hostId: host.id, errorKind: 'request', errorMessage: failureMessage(cause, 'Couldn’t update this runner.') })
     }
   })
 
@@ -1091,7 +1094,7 @@ export default function App({ appId, token }) {
             onStop={command => stopCommand(host, command)}
             updateConfirming={confirmation?.kind === 'update' && confirmation.id === host.id}
             updating={pending(`update:${host.id}`)}
-            updateResult={updateResult}
+            updateResult={updateResults[host.id] ?? null}
             onUpdate={() => {
               setExpandedId(host.id)
               setRenamingId(null)

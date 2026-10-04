@@ -150,3 +150,25 @@ test('a stale machine list stays readable while remote changes are paused', asyn
     assert.equal(await page.getByRole('button', { name: 'Rename Laptop' }).isDisabled(), true)
   } finally { await browser.close() }
 })
+
+test('switching tabs during the first load still finishes loading Machines', async () => {
+  let release
+  const gate = new Promise(resolve => { release = resolve })
+  const answer = machines()
+  const { browser, page } = await open(script, async request => {
+    if (request.method === 'GET' && request.path === '/api/connect/hosts') await gate
+    return answer(request)
+  })
+  try {
+    await page.evaluate(() => {
+      window.signals = []
+      window.mobius.signal = (name, data) => window.signals.push(name)
+    })
+    await page.getByRole('tab', { name: /Shared Möbius/ }).click()
+    release()
+    await page.waitForFunction(() => window.signals.includes('app_ready'))
+    await page.getByRole('tab', { name: 'Machines' }).click()
+    await page.getByText('Laptop', { exact: true }).waitFor()
+    assert.equal(await page.getByText('Loading Connect…').count(), 0)
+  } finally { await browser.close() }
+})

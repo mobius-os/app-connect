@@ -32,9 +32,9 @@ export function usePolledList(url, field, label, headers, { interval = 5000, pol
     const timer = setInterval(tick, every)
     document.addEventListener('visibilitychange', tick)
     return () => {
+      // A read already in flight still lands: pausing must not lose the first list.
       clearInterval(timer)
       document.removeEventListener('visibilitychange', tick)
-      sequence.current += 1
     }
   }, [poll, every, unsupported, reload])
 

@@ -106,6 +106,12 @@ export default function BrowserAccessSection({ headers, poll = true, confirmatio
     if (!response.ok) throw await serverError(response)
     const { grant } = await response.json()
     if (!grant?.id || grant.kind !== 'account') throw new Error('Unexpected response')
+    // A new invitation revokes any inactive grant for the same person, as the
+    // server does. A pending grant is retried under its reserved id instead.
+    grants.update(items => items.map(item => (
+      item.id !== grant.id && item.kind === 'account' && item.status === 'inactive'
+      && item.recipient_handle === grant.recipient_handle
+    ) ? { ...item, status: 'revoked' } : item))
     putGrant(grant)
   }, 'Couldn’t confirm account access was added. Check the list before trying again.')
 
@@ -179,7 +185,7 @@ export default function BrowserAccessSection({ headers, poll = true, confirmatio
           {grant.status === 'revoked' ? <button className="cn-btn cn-btn-ghost cn-btn-sm cn-browser-retry" onClick={() => revoke(grant)} disabled={locked}>
             {action.pending.includes(`revoke:${grant.id}`) ? 'Retrying…' : grant.directory_cleanup_pending ? 'Retry cleanup' : 'Retry stop'}
           </button> : <div className="cn-browser-row-action">
-            {grant.kind === 'account' && grant.status === 'inactive' ? <button className="cn-btn cn-btn-ghost cn-btn-sm" onClick={() => invite(grant.recipient_handle)} disabled={locked}>
+            {grant.kind === 'account' && (grant.status === 'inactive' || grant.status === 'pending') ? <button className="cn-btn cn-btn-ghost cn-btn-sm" onClick={() => invite(grant.recipient_handle)} disabled={locked}>
               {action.pending.includes(`invite:${grant.recipient_handle}`) ? 'Inviting…' : 'Invite again'}
             </button> : null}
             {grant.kind !== 'account' ? <NewLinkButton disabled={locked} creating={action.pending.includes(`link:${grant.id}`)} onClick={() => links.reissue(grant)}/> : null}

@@ -172,3 +172,49 @@ test('switching tabs during the first load still finishes loading Machines', asy
     assert.equal(await page.getByText('Loading Connect…').count(), 0)
   } finally { await browser.close() }
 })
+
+test('hiding Machines pauses output tails and keeps each read position', async () => {
+  const hosts = [laptop({ active_commands: [{ id: 'c1', label: 'make test', state: 'running', started_at: 1 }] })]
+  const OUTPUT = '/api/connect/hosts/h1/commands/c1/output'
+  const { browser, page, requests } = await open(script, machines({ hosts, write: request => request.path === OUTPUT
+    ? { body: { chunks: request.query === '?after=0' ? [{ seq: 0, stream: 'stdout', text: 'one\n' }, { seq: 1, stream: 'stdout', text: 'two\n' }] : [], next: 2 } }
+    : undefined }))
+  const reads = () => requests.filter(item => item.path === OUTPUT).map(item => item.query)
+  try {
+    await page.waitForFunction(() => document.body.textContent.includes('two'))
+    await page.getByRole('tab', { name: /Shared Möbius/ }).click()
+    const hidden = reads().length
+    await page.waitForTimeout(2000)
+    assert.equal(reads().length, hidden, 'no output reads while Machines is hidden')
+    await page.getByRole('tab', { name: 'Machines' }).click()
+    await page.waitForTimeout(1700)
+    const resumed = reads().slice(hidden)
+    assert.ok(resumed.length > 0, 'output polling resumes')
+    assert.ok(resumed.every(query => query === '?after=2'), `resumed from the kept position: ${resumed}`)
+  } finally { await browser.close() }
+})
+
+test('a briefly stale machine list pauses output tails without losing positions', async () => {
+  const hosts = [laptop({ active_commands: [{ id: 'c1', label: 'make test', state: 'running', started_at: 1 }] })]
+  const OUTPUT = '/api/connect/hosts/h1/commands/c1/output'
+  let down = false
+  const answer = machines({ hosts, write: request => request.path === OUTPUT
+    ? { body: { chunks: request.query === '?after=0' ? [{ seq: 0, stream: 'stdout', text: 'one\n' }, { seq: 1, stream: 'stdout', text: 'two\n' }] : [], next: 2 } }
+    : undefined })
+  const { browser, page, requests } = await open(script, request =>
+    down && request.method === 'GET' && request.path === '/api/connect/hosts' ? { status: 503 } : answer(request))
+  const reads = () => requests.filter(item => item.path === OUTPUT).map(item => item.query)
+  try {
+    await page.waitForFunction(() => document.body.textContent.includes('two'))
+    down = true
+    await page.getByText('Showing the last successful list', { exact: false }).first().waitFor()
+    const paused = reads().length
+    await page.waitForTimeout(2000)
+    assert.equal(reads().length, paused, 'no output reads while the list is stale')
+    down = false
+    await page.waitForTimeout(7000)
+    const resumed = reads().slice(paused)
+    assert.ok(resumed.length > 0, 'output polling resumes')
+    assert.ok(resumed.every(query => query === '?after=2'), `resumed from the kept position: ${resumed}`)
+  } finally { await browser.close() }
+})

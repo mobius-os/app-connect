@@ -39,16 +39,22 @@ for (const [runtime, body] of [
   } finally { await browser.close() }
 })
 
-test('a list that never loaded says so, and a refused list hides the section', async () => {
-  for (const status of [503, 403]) {
-    const { browser, page } = await fixture({ status })
+test('a list that never loaded or the directory refused says so; an uncoded refusal or missing route hides it', async () => {
+  for (const [status, body, shown] of [
+    [503, {}, true],
+    [403, { detail: 'The account directory rejected the request.', code: 'directory_rejected' }, true],
+    [404, { detail: 'No such account.', code: 'unknown_handle' }, true],
+    [403, { detail: 'Only the installation owner can manage this access.' }, false],
+    [404, {}, false],
+  ]) {
+    const { browser, page } = await fixture({ status, body })
     try {
-      if (status === 503) {
-        await page.getByText('Couldn’t load instances shared with you.').waitFor()
+      if (shown) {
+        await page.getByText(/^Couldn’t load instances shared with you\./).waitFor()
         assert.equal(await page.getByText('Showing the last successful list.').count(), 0)
       } else {
         await page.waitForFunction(() => !document.body.textContent.includes('Loading shared Möbius'))
-        assert.equal(await page.getByText('Shared with me').count(), 0)
+        assert.equal(await page.getByText('Shared with me').count(), 0, `${status} ${JSON.stringify(body)}`)
       }
     } finally { await browser.close() }
   }

@@ -5,7 +5,7 @@
     "node": ">=20"
   },
   "scripts": {
-    "test": "node --test test_api.mjs test_browser_access.mjs test_shared_access.mjs test_layout.mjs test_state.mjs test_tabs.mjs",
+    "test": "node --test test_*.mjs",
     "test:browser-access": "node --test test_browser_access.mjs"
   },
   "devDependencies": {

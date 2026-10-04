@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { loadConnectionList, responseErrorData } from './connect-api.mjs'
+import { INITIAL_LIST, ServerError, failureMessage, loadConnectionList, nextList, responseErrorData, serverError } from './connect-api.mjs'
 
 for (const status of [404, 501]) {
   test(`HTTP ${status} explains missing platform support without promising a restart`, async t => {
@@ -95,4 +95,43 @@ test('unsupported and malformed responses must not preserve a stale snapshot', a
 test('typed error parser preserves detail and code without guessing from copy', async () => {
   const response = Response.json({ detail: 'Busy', code: 'host_busy' }, { status: 409 })
   assert.deepEqual(await responseErrorData(response, 'Fallback'), { detail: 'Busy', code: 'host_busy' })
+})
+
+test('a failed list read reports its HTTP status and error code', async t => {
+  t.mock.method(globalThis, 'fetch', async () => Response.json({ detail: 'Link first', code: 'account_unlinked' }, { status: 409 }))
+  const result = await loadConnectionList('/api/connect/browser-access/shared', 'instances', 'Shared Möbius', {})
+  assert.equal(result.status, 409)
+  assert.equal(result.code, 'account_unlinked')
+  assert.equal(result.notice.message, 'Link first')
+})
+
+test('list state keeps data only through temporary failures', () => {
+  const ready = nextList(INITIAL_LIST, { ready: true, items: [1], data: { hosts: [1] } })
+  assert.equal(ready.status, 'ready')
+  const notice = { title: 'Down', message: 'Later' }
+  const stale = nextList(ready, { ready: false, transient: true, status: 503, notice })
+  assert.deepEqual([stale.status, stale.items, stale.data, stale.notice], ['stale', [1], { hosts: [1] }, notice])
+  assert.equal(nextList(stale, { ready: false, transient: true, notice }).status, 'stale')
+  assert.equal(nextList(stale, { ready: true, items: [], data: {} }).notice, null)
+  const neverLoaded = nextList(INITIAL_LIST, { ready: false, transient: true, status: 503, notice })
+  assert.deepEqual([neverLoaded.status, neverLoaded.items], ['failed', []])
+  const malformed = nextList(ready, { ready: false, transient: false, status: 200, notice })
+  assert.deepEqual([malformed.status, malformed.items], ['failed', []])
+})
+
+test('refused or missing routes are unsupported, which stops polling', () => {
+  for (const status of [403, 404, 501]) {
+    const list = nextList(INITIAL_LIST, { ready: false, transient: false, status, notice: { title: 'x', message: 'y' } })
+    assert.equal(list.status, 'unsupported')
+    assert.equal(list.httpStatus, status)
+  }
+})
+
+test('action failures show the server’s reason, otherwise the caller’s fallback', async () => {
+  const answered = await serverError(Response.json({ detail: 'No such handle.', code: 'unknown_handle' }, { status: 404 }))
+  assert.ok(answered instanceof ServerError)
+  assert.equal(failureMessage(answered, 'Fallback'), 'No such handle.')
+  assert.equal(failureMessage(await serverError(new Response('', { status: 502 })), 'Fallback'), 'Fallback')
+  assert.equal(failureMessage(new TypeError('Failed to fetch'), 'Fallback'), 'Fallback')
+  assert.equal(failureMessage(new Error('Unexpected response'), 'Fallback'), 'Fallback')
 })

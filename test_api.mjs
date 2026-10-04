@@ -119,12 +119,20 @@ test('list state keeps data only through temporary failures', () => {
   assert.deepEqual([malformed.status, malformed.items], ['failed', []])
 })
 
-test('refused or missing routes are unsupported, which stops polling', () => {
+test('uncoded refusals and missing routes are unsupported; coded refusals are failures', () => {
   for (const status of [403, 404, 501]) {
     const list = nextList(INITIAL_LIST, { ready: false, transient: false, status, notice: { title: 'x', message: 'y' } })
     assert.equal(list.status, 'unsupported')
     assert.equal(list.httpStatus, status)
+    const coded = nextList(INITIAL_LIST, { ready: false, transient: false, status, code: 'directory_rejected', notice: { title: 'x', message: 'y' } })
+    assert.equal(coded.status, 'failed')
   }
+})
+
+test('a coded 404 is the service’s answer, not a missing route', async t => {
+  t.mock.method(globalThis, 'fetch', async () => new Response(JSON.stringify({ detail: 'No such account.', code: 'unknown_handle' }), { status: 404 }))
+  const result = await loadConnectionList('/x', 'items', 'Shared Möbius', {})
+  assert.deepEqual([result.status, result.code, result.notice.message], [404, 'unknown_handle', 'No such account.'])
 })
 
 test('action failures show the server’s reason, otherwise the caller’s fallback', async () => {

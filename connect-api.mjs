@@ -32,12 +32,6 @@ export function failureMessage(cause, fallback) {
 export async function loadConnectionList(url, field, label, headers) {
   try {
     const response = await fetch(url, { headers })
-    if (response.status === 404 || response.status === 501) {
-      return { ready: false, transient: false, status: response.status, items: [], notice: {
-        title: `${label} is not supported by this running Möbius`,
-        message: 'Check for a Möbius platform update in Settings. Restart only if an installed update asks for it. If Möbius is up to date, ask its agent to check this missing feature; repeated restarts will not add it.',
-      } }
-    }
     if (response.status === 503) {
       return { ready: false, transient: true, status: 503, items: [], notice: {
         title: `${label} is unavailable`,
@@ -46,6 +40,13 @@ export async function loadConnectionList(url, field, label, headers) {
     }
     if (!response.ok) {
       const { detail, code } = await responseErrorData(response, `Couldn’t load ${label.toLowerCase()} (HTTP ${response.status}).`)
+      // A missing route has no error code; a coded 404 is the service's own answer.
+      if ((response.status === 404 || response.status === 501) && !code) {
+        return { ready: false, transient: false, status: response.status, items: [], notice: {
+          title: `${label} is not supported by this running Möbius`,
+          message: 'Check for a Möbius platform update in Settings. Restart only if an installed update asks for it. If Möbius is up to date, ask its agent to check this missing feature; repeated restarts will not add it.',
+        } }
+      }
       throw Object.assign(new Error(detail), { transient: response.status >= 500, status: response.status, code })
     }
     const data = await response.json()
@@ -60,12 +61,14 @@ export async function loadConnectionList(url, field, label, headers) {
 }
 
 // These answers will not change while this page is open, so polling stops.
+// Only uncoded ones count: a missing route, or this caller lacking permission.
+// A coded refusal is a real failure (for example from the account directory).
 const UNSUPPORTED = new Set([403, 404, 501])
 
 export const INITIAL_LIST = { status: 'loading', items: [], data: null, notice: null, code: null, httpStatus: null }
 
 // status: 'loading' | 'ready' | 'stale' (had data, now failing temporarily)
-//       | 'unsupported' (403/404/501) | 'failed' (anything else; no data kept)
+//       | 'unsupported' (uncoded 403/404/501) | 'failed' (anything else; no data kept)
 export function nextList(previous, result) {
   if (result.ready) return { ...INITIAL_LIST, status: 'ready', items: result.items, data: result.data }
   if (result.transient && (previous.status === 'ready' || previous.status === 'stale')) {
@@ -73,7 +76,7 @@ export function nextList(previous, result) {
   }
   return {
     ...INITIAL_LIST,
-    status: UNSUPPORTED.has(result.status) ? 'unsupported' : 'failed',
+    status: UNSUPPORTED.has(result.status) && !result.code ? 'unsupported' : 'failed',
     notice: result.notice,
     code: result.code ?? null,
     httpStatus: result.status ?? null,

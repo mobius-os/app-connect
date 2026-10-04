@@ -33,15 +33,12 @@ export function useSharedDirectory(headers) {
 
 export function SharedWithMe({ directory }) {
   const { list, action, respond, unlinked } = directory
-  // A refusal is a real failure to show; only a missing route hides the section.
-  const refused = list.status === 'unsupported' && list.httpStatus === 403
-  if (list.status === 'unsupported' && !refused) return null
+  if (list.status === 'unsupported') return null
   const locked = list.status !== 'ready' || action.pending.length > 0
   return <section className="cn-section cn-shared-with-me" aria-labelledby="cn-shared-title">
     <div className="cn-section-head"><div className="cn-section-heading"><h2 className="cn-secttitle" id="cn-shared-title">Shared with me</h2></div></div>
     {unlinked ? <p className="cn-browser-note">Link your mobius.you account in Identity to see instances shared with you.</p>
-      : <ListNote list={refused ? { ...list, status: 'failed' } : list} loading="Loading shared Möbius…"
-        failed={refused ? 'Couldn’t load instances shared with you.' : 'Couldn’t load instances shared with you. Connect will try again.'}/>}
+      : <ListNote list={list} loading="Loading shared Möbius…" failed="Couldn’t load instances shared with you. Connect will try again."/>}
     {action.error ? <p className="cn-browser-action-error" role="alert">{action.error}</p> : null}
     {list.status === 'ready' && !list.items.length ? <div className="cn-empty-row">No Möbius shared with this account yet.</div> : null}
     {list.items.length ? <div className="cn-list" aria-label="Instances shared with me">
@@ -109,12 +106,12 @@ export default function BrowserAccessSection({ headers, poll = true, confirmatio
     if (!response.ok) throw await serverError(response)
     const { grant } = await response.json()
     if (!grant?.id || grant.kind !== 'account') throw new Error('Unexpected response')
-    // A new invitation replaces any inactive grant for the same person. A pending
-    // grant is retried under its reserved id, so its row is simply updated.
-    grants.update(items => items.filter(item => !(
+    // A new invitation revokes any inactive grant for the same person, as the
+    // server does. A pending grant is retried under its reserved id instead.
+    grants.update(items => items.map(item => (
       item.id !== grant.id && item.kind === 'account' && item.status === 'inactive'
       && item.recipient_handle === grant.recipient_handle
-    )))
+    ) ? { ...item, status: 'revoked' } : item))
     putGrant(grant)
   }, 'Couldn’t confirm account access was added. Check the list before trying again.')
 

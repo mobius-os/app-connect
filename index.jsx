@@ -779,8 +779,7 @@ export default function App({ appId, token }) {
     window.mobius.signal('app_ready', { item_count: hosts.items.length + outbound.items.length })
   }, [loaded, hosts.items, outbound.items])
 
-  // Output tails follow only while the Machines tab shows them.
-  const runningKey = (machinesStale || !onMachines ? [] : hosts.items)
+  const runningKey = (machinesStale ? [] : hosts.items)
     .flatMap(host => activeCommands(host).map(command => `${host.id}/${command.id}`))
     .join(',')
 
@@ -796,10 +795,11 @@ export default function App({ appId, token }) {
     ))) setConfirmation(null)
   }, [hosts.items, confirmation])
 
-  // Follow each running command's output while it runs. Only a Möbius that
-  // reports a command list has the output route; older ones show no tail.
+  // Follow each running command's output while it runs and Machines shows it.
+  // Only a Möbius that reports a command list has the output route; older ones
+  // show no tail. Hiding the tab pauses polling but keeps each read position.
   useEffect(() => {
-    const running = (machinesStale || !onMachines ? [] : hosts.items)
+    const running = (machinesStale ? [] : hosts.items)
       .filter(host => Array.isArray(host.active_commands))
       .flatMap(host => host.active_commands.map(command => ({ host, command })))
     const live = new Set(running.map(({ command }) => command.id))
@@ -808,7 +808,7 @@ export default function App({ appId, token }) {
     ))
     const cursors = outputCursors.current
     for (const id of Object.keys(cursors)) if (!live.has(id)) delete cursors[id]
-    if (!running.length) return undefined
+    if (!running.length || !onMachines) return undefined
     let stopped = false
     let inFlight = false
     const poll = async () => {

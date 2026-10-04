@@ -284,13 +284,16 @@ test('an account share that needs a new invitation says so and can be invited ag
   const grants = [account('inactive')]
   const { browser, page, requests } = await open(script, server(grants, request => {
     if (request.path !== `${ENDPOINT}/accounts`) return
-    grants.splice(0, 1, { ...account(), id: 'a2' })
-    return { body: { grant: grants[0] } }
+    // Like the runtime: the stale grant is revoked and a new one registered.
+    grants.splice(0, 1, account('revoked'), { ...account(), id: 'a2' })
+    return { body: { grant: grants[1] } }
   }))
   try {
     await page.getByText('mobius.you account · Needs a new invitation').waitFor()
     await page.getByRole('button', { name: 'Invite again' }).click()
     await page.getByText('Verified mobius.you account · Access until revoked').waitFor()
+    // Replaced at once, not on the next list refresh.
+    assert.equal(await page.getByText('Needs a new invitation').count(), 0)
     assert.deepEqual(requests.find(item => item.method === 'POST')?.body, { recipient_handle: 'friend' })
   } finally { await browser.close() }
 })

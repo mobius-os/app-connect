@@ -39,16 +39,16 @@ for (const [runtime, body] of [
   } finally { await browser.close() }
 })
 
-test('a list that never loaded says so, and a refused list hides the section', async () => {
-  for (const status of [503, 403]) {
+test('a list that never loaded or was refused says so; only a missing route hides the section', async () => {
+  for (const status of [503, 403, 404]) {
     const { browser, page } = await fixture({ status })
     try {
-      if (status === 503) {
-        await page.getByText('Couldn’t load instances shared with you.').waitFor()
-        assert.equal(await page.getByText('Showing the last successful list.').count(), 0)
-      } else {
+      if (status === 404) {
         await page.waitForFunction(() => !document.body.textContent.includes('Loading shared Möbius'))
         assert.equal(await page.getByText('Shared with me').count(), 0)
+      } else {
+        await page.getByText(/^Couldn’t load instances shared with you\./).waitFor()
+        assert.equal(await page.getByText('Showing the last successful list.').count(), 0)
       }
     } finally { await browser.close() }
   }

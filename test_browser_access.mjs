@@ -284,7 +284,8 @@ test('an account share that needs a new invitation says so and can be invited ag
   const grants = [account('inactive')]
   const { browser, page, requests } = await open(script, server(grants, request => {
     if (request.path !== `${ENDPOINT}/accounts`) return
-    // Like the runtime: the stale grant is revoked and a new one registered.
+    // A runtime that marks a stale-binding grant inactive registers a new grant
+    // and revokes the stale one.
     grants.splice(0, 1, account('revoked'), { ...account(), id: 'a2' })
     return { body: { grant: grants[1] } }
   }))
@@ -322,5 +323,20 @@ test('directory cleanup state recovers from grant list after reload, then clears
     grants[0] = { ...grants[0], directory_cleanup_pending: false }
     await page.getByRole('button', { name: 'Retry cleanup' }).waitFor({ state: 'hidden', timeout: 8000 })
     assert.equal(await page.getByText('friend', { exact: true }).count(), 0)
+  } finally { await browser.close() }
+})
+
+test('a pending account share can be invited again, retrying its reserved grant', async () => {
+  const grants = [account('pending')]
+  const { browser, page, requests } = await open(script, server(grants, request => {
+    if (request.path !== `${ENDPOINT}/accounts`) return
+    grants.splice(0, 1, account('active'))
+    return { body: { grant: grants[0] } }
+  }))
+  try {
+    await page.getByText('mobius.you account · Registration pending · Access unavailable').waitFor()
+    await page.getByRole('button', { name: 'Invite again' }).click()
+    await page.getByText('Verified mobius.you account · Access until revoked').waitFor()
+    assert.deepEqual(requests.filter(item => item.method === 'POST').map(item => item.body), [{ recipient_handle: 'friend' }])
   } finally { await browser.close() }
 })

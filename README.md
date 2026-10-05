@@ -17,9 +17,8 @@ stop confirmation or directory cleanup remain visible and retryable. A failed
 refresh preserves the last list but pauses changes and Open.
 
 One-time link invitations are retired: Connect no longer creates or re-issues
-them. Link grants made earlier still appear as **One-time link** rows and keep their
-current browser sessions until revoked. To share with that person again, or
-after their session lapses, invite their mobius.you handle.
+them. Link grants made earlier still appear as **One-time link** rows and can be
+revoked. To share with that person again, invite their mobius.you handle.
 
 Lists refresh only while their tab is showing. **Shared with me** reads through
 to mobius.you, so it refreshes once a minute, when the tab opens, and when the

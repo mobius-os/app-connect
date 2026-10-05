@@ -26,13 +26,14 @@ function server(grants, write = () => undefined) {
 
 const WARNING = 'People with access can read shared data and take powerful actions in this Möbius.'
 
-test('the trust warning appears only while inviting', async () => {
+test('inviting asks only for a handle and shows the trust warning while open', async () => {
   const { browser, page } = await open(script, server([link()]))
   try {
     await page.getByText('Alex', { exact: true }).waitFor()
     assert.equal(await page.getByText(WARNING).count(), 0)
     await page.getByRole('button', { name: 'Invite person' }).click()
     assert.equal(await page.getByText(WARNING).count(), 1)
+    assert.deepEqual([await page.getByRole('textbox').count(), await page.getByRole('textbox', { name: 'mobius.you handle' }).count()], [1, 1])
     await page.getByRole('button', { name: 'Cancel' }).click()
     assert.equal(await page.getByText(WARNING).count(), 0)
   } finally { await browser.close() }
@@ -49,15 +50,12 @@ test('the count shows only when someone has access', async () => {
   }
 })
 
-test('existing one-time link grants show with Revoke, and inviting asks only for a handle', async () => {
+test('existing one-time link grants show their state with Revoke', async () => {
   const { browser, page } = await open(script, server([link(), { ...link('invited'), id: 'g2', label: 'Sam' }]))
   try {
     await page.getByText('One-time link · Active').waitFor()
     assert.equal(await page.getByText('One-time link · Never accepted').count(), 1)
     assert.equal(await page.getByRole('button', { name: 'Revoke', exact: true }).count(), 2)
-    await page.getByRole('button', { name: 'Invite person' }).click()
-    assert.equal(await page.getByRole('textbox').count(), 1)
-    assert.equal(await page.getByRole('textbox', { name: 'mobius.you handle' }).count(), 1)
   } finally { await browser.close() }
 })
 

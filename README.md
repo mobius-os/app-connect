@@ -14,11 +14,12 @@ grant access.
 
 An owner can revoke access. Settled revoked rows disappear, but rows awaiting
 stop confirmation or directory cleanup remain visible and retryable. A failed
-refresh preserves the last list but pauses changes and Open. Connect also
-retains one-use, owner-labelled invitations as a separate option for people
-without a mobius.you account; labels do not verify identities, so deliver those
-links privately. They expire after one day, and reissuing one does not end
-existing sessions.
+refresh preserves the last list but pauses changes and Open.
+
+One-time link invitations are retired: Connect no longer creates or re-issues
+them. Link grants made earlier still appear as **One-time link** rows, keep
+their access and can be revoked; to share with that person again, invite their
+mobius.you handle.
 
 Lists refresh only while their tab is showing. **Shared with me** reads through
 to mobius.you, so it refreshes once a minute, when the tab opens, and when the

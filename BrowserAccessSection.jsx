@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Plus } from '@openai/apps-sdk-ui/components/Icon'
 import { serverError } from './connect-api.mjs'
-import { CopyCommand, InlineActionConfirm, ListNote, useAction, usePolledList } from './connect-ui.jsx'
+import { InlineActionConfirm, ListNote, useAction, usePolledList } from './connect-ui.jsx'
 
 const ENDPOINT = '/api/connect/browser-access'
 // Runtimes from before error codes report an unlinked account only by this text.
@@ -74,10 +74,11 @@ function grantMeta(grant) {
       default: return 'mobius.you account'
     }
   }
+  // One-time link invitations are retired: existing ones show and revoke only.
   switch (grant.status) {
-    case 'active': return 'Active · Access until revoked'
-    case 'invited': return 'Invited · Accepted access lasts until revoked'
-    default: return 'Revoked'
+    case 'active': return 'One-time link · Access until revoked'
+    case 'invited': return 'One-time link · Not accepted · Invite their mobius.you handle instead'
+    default: return 'One-time link · Revoked'
   }
 }
 
@@ -96,7 +97,6 @@ export default function BrowserAccessSection({ headers, poll = true, confirmatio
   const putGrant = grant => grants.update(items => items.some(item => item.id === grant.id)
     ? items.map(item => item.id === grant.id ? grant : item)
     : [grant, ...items])
-  const links = useLinkInvitations({ headers, run: action.run, putGrant })
 
   const invite = recipient => action.run(`invite:${recipient}`, async () => {
     const response = await fetch(`${ENDPOINT}/accounts`, {
@@ -167,9 +167,7 @@ export default function BrowserAccessSection({ headers, poll = true, confirmatio
         </button>
       </form>
       <p className="cn-browser-warning">People with access can read shared data and take powerful actions in this Möbius. Only invite someone you trust.</p>
-      <LinkInvitationForm disabled={locked} creating={action.pending.includes('link:create')} onCreate={links.create}/>
     </> : null}
-    {links.invitation ? <LinkInvitationPanel invitation={links.invitation} onDone={links.dismiss}/> : null}
     {action.error ? <p className="cn-browser-action-error" role="alert">{action.error}</p> : null}
     {hasList ? shown.length ? <div className="cn-list" aria-label="Browser access grants">
       {shown.map(grant => {
@@ -188,7 +186,6 @@ export default function BrowserAccessSection({ headers, poll = true, confirmatio
             {grant.kind === 'account' && (grant.status === 'inactive' || grant.status === 'pending') ? <button className="cn-btn cn-btn-ghost cn-btn-sm" onClick={() => invite(grant.recipient_handle)} disabled={locked}>
               {action.pending.includes(`invite:${grant.recipient_handle}`) ? 'Inviting…' : 'Invite again'}
             </button> : null}
-            {grant.kind !== 'account' ? <NewLinkButton disabled={locked} creating={action.pending.includes(`link:${grant.id}`)} onClick={() => links.reissue(grant)}/> : null}
             <InlineActionConfirm
               open={confirming}
               triggerLabel="Revoke"
@@ -206,77 +203,4 @@ export default function BrowserAccessSection({ headers, poll = true, confirmatio
       })}
     </div> : <div className="cn-empty-row">No people with access yet.</div> : null}
   </section>
-}
-
-// One-time link invitations: the older way to share, and the only one for
-// someone without a mobius.you account. Everything specific to links is below
-// this line, so the flow can be removed as a unit.
-
-function useLinkInvitations({ headers, run, putGrant }) {
-  const [invitation, setInvitation] = useState(null)
-  const request = (key, url, body, label, reissued, fallback) => run(key, async () => {
-    setInvitation(null)
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: headers(body ? { 'Content-Type': 'application/json' } : {}),
-      ...(body ? { body: JSON.stringify(body) } : {}),
-    })
-    if (!response.ok) throw await serverError(response)
-    const result = await response.json()
-    if (!result?.grant?.id || !result.join_url) throw new Error('Unexpected response')
-    putGrant(result.grant)
-    setInvitation({ label, url: result.join_url, reissued })
-  }, fallback)
-  return {
-    invitation,
-    dismiss: () => setInvitation(null),
-    create: label => request('link:create', ENDPOINT, { label }, label, false,
-      'Couldn’t confirm the invitation was created. Check the list before trying again.'),
-    reissue: grant => request(`link:${grant.id}`, `${ENDPOINT}/${encodeURIComponent(grant.id)}/invitation`, null, grant.label, true,
-      'Couldn’t confirm the new invitation was created. Check the list before trying again.'),
-  }
-}
-
-function LinkInvitationForm({ disabled, creating, onCreate }) {
-  const [open, setOpen] = useState(false)
-  const [label, setLabel] = useState('')
-  return <>
-    <button className="cn-btn cn-btn-ghost cn-btn-sm" type="button" onClick={() => setOpen(value => !value)} aria-expanded={open}>
-      {open ? 'Hide invitation option' : 'Use one-time invitation instead'}
-    </button>
-    {open ? <>
-      <form className="cn-browser-create" onSubmit={async event => {
-        event.preventDefault()
-        if (await onCreate(label.trim())) setLabel('')
-      }}>
-        <label className="cn-field">
-          <span className="cn-label">Recipient label</span>
-          <input className="cn-input" value={label} maxLength={128} placeholder="Alex" onChange={event => setLabel(event.target.value)} disabled={disabled}/>
-        </label>
-        <button className="cn-btn" type="submit" disabled={disabled || !label.trim()}>
-          <Plus size={16}/>{creating ? 'Creating…' : 'Create invitation'}
-        </button>
-      </form>
-      <p className="cn-browser-note">This label is assigned by you; it does not verify the recipient’s account.</p>
-    </> : null}
-  </>
-}
-
-function NewLinkButton({ disabled, creating, onClick }) {
-  return <button className="cn-btn cn-btn-ghost cn-btn-sm" onClick={onClick} disabled={disabled}
-    title="For the recipient’s other browser, or after a 30-day inactive session expires. Replaces unused links without changing existing sessions or access.">
-    {creating ? 'Creating…' : 'New invitation'}
-  </button>
-}
-
-function LinkInvitationPanel({ invitation, onDone }) {
-  return <div className="cn-browser-link" role="status">
-    <div className="cn-browser-link-head">
-      <strong>Invitation for {invitation.label}</strong>
-      <button className="cn-btn cn-btn-ghost cn-btn-sm" onClick={onDone}>Done</button>
-    </div>
-    <p>This one-time link is shown only now. Share it privately. It expires after one day; accepted access lasts until revoked.</p>
-    {invitation.reissued ? <p>It replaces unused invitation links only. Existing browser sessions and access are unchanged.</p> : null}
-    <CopyCommand command={invitation.url} what="link"/>
-  </div>
 }

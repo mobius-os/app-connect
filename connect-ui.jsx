@@ -76,7 +76,7 @@ function selectContents(event) {
   window.getSelection().addRange(range)
 }
 
-export function CopyCommand({ command, what = 'command' }) {
+export function CopyCommand({ command }) {
   const [state, setState] = useState('idle')
   const resetTimer = useRef(null)
   useEffect(() => () => clearTimeout(resetTimer.current), [])
@@ -92,11 +92,11 @@ export function CopyCommand({ command, what = 'command' }) {
     <div className="cn-code-row">
       <code className="cn-code" onClick={selectContents}>{command}</code>
       <button className={`cn-btn cn-btn-ghost cn-copybtn${state === 'copied' ? ' is-copied' : ''}`} onClick={copy}>
-        {state === 'copied' ? <><Check size={17}/>Copied</> : <><Copy size={17}/>Copy {what}</>}
+        {state === 'copied' ? <><Check size={17}/>Copied</> : <><Copy size={17}/>Copy command</>}
       </button>
     </div>
     {state === 'failed' ? <div className="cn-hint" role="status">
-      Copy didn’t work on this device. Tap and hold the {what} to copy it.
+      Copy didn’t work on this device. Tap and hold the command to copy it.
     </div> : null}
   </>
 }

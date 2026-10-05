@@ -167,10 +167,6 @@ const CSS = `
   .cn-browser-note { margin: 9px 0 15px; color: var(--muted); font-size: 11.5px; line-height: 1.45; }
   .cn-browser-create { margin-top: 13px; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 10px; }
   .cn-browser-create > .cn-btn { min-height: 46px; }
-  .cn-browser-link { margin: 14px 0 18px; padding: 15px; border: 1px solid var(--border); border-radius: 14px; background: var(--surface); }
-  .cn-browser-link-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-  .cn-browser-link-head strong { font-size: 13px; font-weight: 680; }
-  .cn-browser-link p { margin: 9px 0 12px; color: var(--muted); font-size: 12px; line-height: 1.45; }
   .cn-browser-action-error { margin: 12px 0; color: #ffb7ba; font-size: 12px; line-height: 1.45; }
   .cn-browser-row { min-height: 72px; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--border); }
   .cn-browser-person { min-width: 0; }

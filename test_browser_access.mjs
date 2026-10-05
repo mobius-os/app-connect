@@ -12,7 +12,8 @@ const script = await bundle(`
   createRoot(document.getElementById('root')).render(<Fixture/>)
 `)
 const ENDPOINT = '/api/connect/browser-access'
-const link = () => ({ id: 'g1', label: 'Alex', status: 'active', created_at: 1 })
+// A one-time link grant created before link invitations were retired.
+const link = (status = 'active') => ({ id: 'g1', kind: 'invitation', label: 'Alex', status, created_at: 1 })
 const account = (status = 'active') => ({ id: 'a1', kind: 'account', recipient_handle: 'friend', status })
 
 // Answers like the runtime: the grant list always reflects earlier writes.
@@ -25,14 +26,14 @@ function server(grants, write = () => undefined) {
 
 const WARNING = 'People with access can read shared data and take powerful actions in this Möbius.'
 
-test('the trust warning and link option appear only while inviting', async () => {
+test('inviting asks only for a handle and shows the trust warning while open', async () => {
   const { browser, page } = await open(script, server([link()]))
   try {
     await page.getByText('Alex', { exact: true }).waitFor()
     assert.equal(await page.getByText(WARNING).count(), 0)
-    assert.equal(await page.getByRole('button', { name: 'Use one-time invitation instead' }).count(), 0)
     await page.getByRole('button', { name: 'Invite person' }).click()
     assert.equal(await page.getByText(WARNING).count(), 1)
+    assert.deepEqual([await page.getByRole('textbox').count(), await page.getByRole('textbox', { name: 'mobius.you handle' }).count()], [1, 1])
     await page.getByRole('button', { name: 'Cancel' }).click()
     assert.equal(await page.getByText(WARNING).count(), 0)
   } finally { await browser.close() }
@@ -49,61 +50,12 @@ test('the count shows only when someone has access', async () => {
   }
 })
 
-test('one-time link appears only after explicit create, and uses the owner-assigned label', async () => {
-  const grants = [link()]
-  const { browser, page, requests } = await open(script, server(grants, request => {
-    if (request.method !== 'POST' || request.path !== ENDPOINT) return
-    const grant = { id: 'g2', label: request.body.label, status: 'invited' }
-    grants.push(grant)
-    return { body: { grant, join_url: 'https://fixture.test/private-secret', invite_expires_at: 123 } }
-  }))
+test('existing one-time link grants show their state with Revoke', async () => {
+  const { browser, page } = await open(script, server([link(), { ...link('invited'), id: 'g2', label: 'Sam' }]))
   try {
-    await page.getByText('Alex', { exact: true }).waitFor()
-    assert.equal(await page.getByText('private-secret').count(), 0)
-    await page.getByRole('button', { name: 'Invite person', exact: true }).click()
-    await page.getByRole('button', { name: 'Use one-time invitation instead' }).click()
-    await page.getByPlaceholder('Alex').fill('Sam')
-    await page.getByRole('button', { name: 'Create invitation' }).click()
-    await page.getByText('Invitation for Sam').waitFor()
-    assert.equal(await page.getByText('https://fixture.test/private-secret').count(), 1)
-    assert.equal(await page.getByText('Invited · Accepted access lasts until revoked').count(), 1)
-    assert.deepEqual(requests.find(item => item.method === 'POST')?.body, { label: 'Sam' })
-    assert.equal(await page.getByPlaceholder('Alex').inputValue(), '')
-    await page.getByRole('button', { name: 'Copy link' }).click()
-    await page.getByRole('button', { name: 'Copied' }).waitFor()
-    await page.getByRole('button', { name: 'Done' }).click()
-    assert.equal(await page.getByText('https://fixture.test/private-secret').count(), 0)
-  } finally { await browser.close() }
-})
-
-test('new invitation reuses a named grant and reveals a fresh link only after the row action', async () => {
-  const grants = [link()]
-  const { browser, page, requests } = await open(script, server(grants, request => request.path === `${ENDPOINT}/g1/invitation`
-    ? { body: { grant: grants[0], join_url: 'https://fixture.test/renewed-secret', invite_expires_at: 456 } } : undefined))
-  try {
-    await page.getByText('Alex', { exact: true }).waitFor()
-    assert.equal(await page.getByText('renewed-secret').count(), 0)
-    await page.getByRole('button', { name: 'New invitation' }).click()
-    await page.getByText('Invitation for Alex').waitFor()
-    assert.equal(await page.getByText('https://fixture.test/renewed-secret').count(), 1)
-    assert.equal(await page.getByText('Alex', { exact: true }).count(), 1)
-    assert.equal(await page.getByText('It replaces unused invitation links only. Existing browser sessions and access are unchanged.').count(), 1)
-    assert.equal(requests.filter(item => item.method === 'POST').length, 1)
-    assert.equal(requests.find(item => item.method === 'POST')?.body, null)
-    await page.getByRole('button', { name: 'Done' }).click()
-    assert.equal(await page.getByText('renewed-secret').count(), 0)
-  } finally { await browser.close() }
-})
-
-test('a failed reissue shows the server’s reason and leaves grants and revoke usable', async () => {
-  const { browser, page } = await open(script, server([link()], request => request.path === `${ENDPOINT}/g1/invitation`
-    ? { status: 404, body: { detail: 'This grant has no invitation to replace.' } } : undefined))
-  try {
-    await page.getByText('Alex', { exact: true }).waitFor()
-    await page.getByRole('button', { name: 'New invitation' }).click()
-    await page.getByText('This grant has no invitation to replace.').waitFor()
-    assert.equal(await page.getByText('Alex', { exact: true }).count(), 1)
-    assert.equal(await page.getByRole('button', { name: 'Revoke', exact: true }).isDisabled(), false)
+    await page.getByText('One-time link · Active').waitFor()
+    assert.equal(await page.getByText('One-time link · Never accepted').count(), 1)
+    assert.equal(await page.getByRole('button', { name: 'Revoke', exact: true }).count(), 2)
   } finally { await browser.close() }
 })
 
@@ -144,11 +96,11 @@ test('202 keeps access revoked while stop confirmation is pending; retry 204 cle
     await page.getByRole('button', { name: 'Revoke', exact: true }).click()
     await page.getByRole('button', { name: 'Confirm revoke' }).click()
     await page.getByText('Some work is still stopping; stop confirmation is pending.').waitFor()
-    assert.equal(await page.getByText('Revoked', { exact: true }).count(), 1)
+    assert.equal(await page.getByText('One-time link · Revoked', { exact: true }).count(), 1)
     assert.equal(await page.getByRole('button', { name: 'Revoke', exact: true }).count(), 0)
     await page.getByRole('button', { name: 'Retry stop' }).click()
     await page.getByText('Some work is still stopping; stop confirmation is pending.').waitFor({ state: 'hidden' })
-    assert.equal(await page.getByText('Revoked', { exact: true }).count(), 0)
+    assert.equal(await page.getByText('One-time link · Revoked', { exact: true }).count(), 0)
     assert.equal(requests.filter(item => item.method === 'DELETE').length, 2)
   } finally { await browser.close() }
 })
@@ -170,11 +122,11 @@ test('retry failure preserves revoked access and pending-stop warning; initial 5
       if (partialFirst) {
         await page.getByRole('button', { name: 'Retry stop' }).click()
         await page.getByText('Access remains revoked. Couldn’t confirm the remaining work stopped').waitFor()
-        assert.equal(await page.getByText('Revoked', { exact: true }).count(), 1)
+        assert.equal(await page.getByText('One-time link · Revoked', { exact: true }).count(), 1)
         assert.equal(await page.getByRole('button', { name: 'Retry stop' }).isDisabled(), false)
       } else {
         await page.getByText('Couldn’t confirm that access was revoked.').waitFor()
-        assert.equal(await page.getByText('Active · Access until revoked').count(), 1)
+        assert.equal(await page.getByText('One-time link · Active').count(), 1)
         assert.equal(await page.getByRole('button', { name: 'Confirm revoke' }).count(), 1)
       }
     } finally { await browser.close() }
@@ -207,12 +159,9 @@ test('transient load error retains last grant snapshot and disables unsafe actio
   try {
     await page.getByText('Alex', { exact: true }).waitFor()
     await page.getByRole('button', { name: 'Invite person', exact: true }).click()
-    await page.getByRole('button', { name: 'Use one-time invitation instead' }).click()
     await page.getByText('Showing the last successful list.').waitFor({ timeout: 8000 })
     assert.equal(await page.getByText('Alex', { exact: true }).count(), 1)
     assert.equal(await page.getByRole('button', { name: 'Revoke', exact: true }).isDisabled(), true)
-    assert.equal(await page.getByRole('button', { name: 'New invitation' }).isDisabled(), true)
-    assert.equal(await page.getByRole('button', { name: 'Create invitation' }).isDisabled(), true)
     assert.equal(await page.getByRole('button', { name: 'Invite', exact: true }).isDisabled(), true)
     assert.equal(requests.filter(item => item.method !== 'GET').length, 0)
   } finally { await browser.close() }
@@ -232,11 +181,11 @@ test('fresh mount recovers pending-stop status from the server and clears confir
   const { browser, page, requests } = await open(script, server(grants))
   try {
     await page.getByRole('button', { name: 'Retry stop' }).waitFor()
-    assert.equal(await page.getByText('Revoked', { exact: true }).count(), 1)
+    assert.equal(await page.getByText('One-time link · Revoked', { exact: true }).count(), 1)
     assert.equal(requests.some(request => request.method !== 'GET'), false)
     grants[0] = { ...grants[0], stop_pending: false }
     await page.getByRole('button', { name: 'Retry stop' }).waitFor({ state: 'hidden', timeout: 8000 })
-    assert.equal(await page.getByText('Revoked', { exact: true }).count(), 0)
+    assert.equal(await page.getByText('One-time link · Revoked', { exact: true }).count(), 0)
   } finally { await browser.close() }
 })
 
@@ -255,7 +204,6 @@ test('account invite posts only the handle, shows the verified account, and clos
     await page.getByText('Verified mobius.you account · Access until revoked').waitFor()
     assert.deepEqual(requests.find(item => item.method === 'POST')?.body, { recipient_handle: 'friend' })
     assert.equal(await page.getByRole('textbox', { name: 'mobius.you handle' }).count(), 0)
-    assert.equal(await page.getByRole('button', { name: 'New invitation' }).count(), 0)
     assert.equal(await page.getByRole('button', { name: 'Revoke', exact: true }).count(), 1)
   } finally { await browser.close() }
 })

@@ -76,8 +76,8 @@ function grantMeta(grant) {
   }
   // One-time link invitations are retired: existing ones show and revoke only.
   switch (grant.status) {
-    case 'active': return 'One-time link · Access until revoked'
-    case 'invited': return 'One-time link · Not accepted · Invite their mobius.you handle instead'
+    case 'active': return 'One-time link · Active'
+    case 'invited': return 'One-time link · Never accepted'
     default: return 'One-time link · Revoked'
   }
 }

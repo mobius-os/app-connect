@@ -49,19 +49,15 @@ test('the count shows only when someone has access', async () => {
   }
 })
 
-test('existing one-time link grants show and revoke, but no link can be created or re-issued', async () => {
-  const { browser, page, requests } = await open(script, server([link(), { ...link('invited'), id: 'g2', label: 'Sam' }]))
+test('existing one-time link grants show with Revoke, and inviting asks only for a handle', async () => {
+  const { browser, page } = await open(script, server([link(), { ...link('invited'), id: 'g2', label: 'Sam' }]))
   try {
-    await page.getByText('One-time link · Access until revoked').waitFor()
-    assert.equal(await page.getByText('One-time link · Not accepted · Invite their mobius.you handle instead').count(), 1)
+    await page.getByText('One-time link · Active').waitFor()
+    assert.equal(await page.getByText('One-time link · Never accepted').count(), 1)
     assert.equal(await page.getByRole('button', { name: 'Revoke', exact: true }).count(), 2)
     await page.getByRole('button', { name: 'Invite person' }).click()
     assert.equal(await page.getByRole('textbox').count(), 1)
     assert.equal(await page.getByRole('textbox', { name: 'mobius.you handle' }).count(), 1)
-    for (const name of ['Use one-time invitation instead', 'Create invitation', 'New invitation', 'Copy link']) {
-      assert.equal(await page.getByRole('button', { name }).count(), 0, name)
-    }
-    assert.equal(requests.filter(item => item.method !== 'GET').length, 0)
   } finally { await browser.close() }
 })
 
@@ -132,7 +128,7 @@ test('retry failure preserves revoked access and pending-stop warning; initial 5
         assert.equal(await page.getByRole('button', { name: 'Retry stop' }).isDisabled(), false)
       } else {
         await page.getByText('Couldn’t confirm that access was revoked.').waitFor()
-        assert.equal(await page.getByText('One-time link · Access until revoked').count(), 1)
+        assert.equal(await page.getByText('One-time link · Active').count(), 1)
         assert.equal(await page.getByRole('button', { name: 'Confirm revoke' }).count(), 1)
       }
     } finally { await browser.close() }

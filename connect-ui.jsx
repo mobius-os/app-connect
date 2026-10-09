@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Check, Copy } from '@openai/apps-sdk-ui/components/Icon'
 import { INITIAL_LIST, failureMessage, loadConnectionList, nextList } from './connect-api.mjs'
+import { appVisible, onAppVisibilityChange } from './connect-state.mjs'
 
-// Load a list once, then keep it fresh while `poll` is on and the page is visible.
+// Load a list once, then keep it fresh while `poll` is on and the app is visible.
 // `interval` may depend on the current items.
 export function usePolledList(url, field, label, headers, { interval = 5000, poll = true } = {}) {
   const [list, setList] = useState(INITIAL_LIST)
@@ -28,13 +29,13 @@ export function usePolledList(url, field, label, headers, { interval = 5000, pol
     started.current = true
     reload()
     if (!poll) return undefined
-    const tick = () => { if (!document.hidden) reload() }
+    const tick = () => { if (appVisible()) reload() }
     const timer = setInterval(tick, every)
-    document.addEventListener('visibilitychange', tick)
+    const stopVisibility = onAppVisibilityChange(tick)
     return () => {
       // A read already in flight still lands: pausing must not lose the first list.
       clearInterval(timer)
-      document.removeEventListener('visibilitychange', tick)
+      stopVisibility()
     }
   }, [poll, every, unsupported, reload])
 

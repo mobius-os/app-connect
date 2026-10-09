@@ -178,3 +178,30 @@ test('compact platform names preserve unknown systems rather than inventing a fa
 test('update availability does not hide whether an idle machine is online', () => {
   assert.equal(statusOf({ online: true, runner_update_available: true }).label, 'Online')
 })
+
+test('polling treats a shell-hidden frame as hidden even while the tab is visible', async () => {
+  const { appVisible, onAppVisibilityChange } = await import('./connect-state.mjs')
+  const listeners = new Set()
+  const runtime = {
+    runtimeFeatures: { frameVisibility: true },
+    visible: true,
+    onVisibilityChange(cb) { listeners.add(cb); cb(this.visible); return () => listeners.delete(cb) },
+  }
+  const saved = { window: globalThis.window, document: globalThis.document }
+  globalThis.window = { mobius: runtime }
+  globalThis.document = { hidden: false }
+  try {
+    const seen = []
+    const stop = onAppVisibilityChange(visible => seen.push(visible))
+    runtime.visible = false
+    for (const cb of listeners) cb(false)
+    assert.equal(appVisible(), false)
+    stop()
+    assert.deepEqual(seen, [false])
+    globalThis.window = { mobius: {} }
+    assert.equal(appVisible(), true, 'older runtimes fall back to document.hidden')
+  } finally {
+    globalThis.window = saved.window
+    globalThis.document = saved.document
+  }
+})

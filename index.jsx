@@ -10,6 +10,8 @@ import {
   runnerUpdateFeedback,
   statusOf,
   platformLabel,
+  appVisible,
+  onAppVisibilityChange,
 } from './connect-state.mjs'
 import { failureMessage, responseError, responseErrorData, serverError } from './connect-api.mjs'
 import { CopyCommand, InlineActionConfirm, useAction, usePolledList } from './connect-ui.jsx'
@@ -793,7 +795,7 @@ export default function App({ appId, token }) {
 
   // Follow each running command's output while it runs and Machines shows it.
   // Only a Möbius that reports a command list has the output route; older ones
-  // show no tail. A hidden tab or a stale list pauses polling but keeps each
+  // show no tail. A hidden app or a stale list pauses polling but keeps each
   // read position.
   useEffect(() => {
     const running = hosts.items
@@ -811,7 +813,7 @@ export default function App({ appId, token }) {
     const poll = async () => {
       // A slow round must finish before the next starts, or two polls would
       // read the same cursor and append the same lines twice.
-      if (inFlight) return
+      if (inFlight || !appVisible()) return
       inFlight = true
       try {
         await pollOnce()
@@ -842,9 +844,12 @@ export default function App({ appId, token }) {
     }
     poll()
     const timer = setInterval(poll, 1500)
+    // Catch up as soon as the app is shown again instead of on the next tick.
+    const stopVisibility = onAppVisibilityChange(visible => { if (visible) poll() })
     return () => {
       stopped = true
       clearInterval(timer)
+      stopVisibility()
     }
     // runningKey captures exactly which commands are live.
     // eslint-disable-next-line react-hooks/exhaustive-deps

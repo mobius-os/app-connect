@@ -233,8 +233,7 @@ function relTime(timestamp) {
   return `${Math.floor(seconds / 86400)}d ago`
 }
 
-function PairingPanel({ pairing, onDone, onRefresh, stale }) {
-  const expires = pairing.expires_at ? new Date(pairing.expires_at * 1000).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : null
+function PairingPanel({ pairing, onDone, onReplace, stale }) {
   return <section className="cn-pairing" aria-labelledby="cn-pair-title">
     <div className="cn-card-head">
       <h2 className="cn-card-title" id="cn-pair-title">
@@ -248,7 +247,7 @@ function PairingPanel({ pairing, onDone, onRefresh, stale }) {
         <p className="cn-step-t">Run this command on the machine. It only needs Python 3.</p>
         <CopyCommand command={pairing.install_command}/>
         <div className="cn-hint">
-          Installs a background service that reconnects after reboot. {expires ? `Expires at ${expires}.` : 'This command expires after 15 minutes.'} <button className="cn-pair-refresh" onClick={onRefresh} disabled={stale}>Refresh command</button>
+          Installs a background service that reconnects after reboot. You can send it to someone: it works once, with no time limit, until the machine pairs or you remove it. Shared it by mistake? <button className="cn-pair-refresh" onClick={onReplace} disabled={stale}>Make a new command</button> and the old one stops working.
         </div>
       </div>
     </div>
@@ -869,11 +868,13 @@ export default function App({ appId, token }) {
     await hosts.reload()
   }, 'Couldn’t add this machine.')
 
-  const showCommand = id => action.run(`pairing:${id}`, async () => {
-    const response = await fetch(`/api/connect/hosts/${id}/pairing`, { headers: headers() })
+  const showCommand = (id, replace = false) => action.run(`pairing:${id}`, async () => {
+    const response = await fetch(`/api/connect/hosts/${id}/pairing`, replace
+      ? { method: 'POST', headers: headers() }
+      : { headers: headers() })
     if (!response.ok) throw await serverError(response)
     setPairing(await response.json())
-  }, 'Couldn’t refresh the pairing command.')
+  }, replace ? 'Couldn’t make a new pairing command.' : 'Couldn’t show the pairing command.')
 
   const removeMachine = host => action.run(`remove:${host.id}`, async () => {
     const force = host.paired && !host.online ? '?force=true' : ''
@@ -1048,7 +1049,7 @@ export default function App({ appId, token }) {
           stale={machinesStale}
           pairing={pairing}
           onDone={() => setPairing(null)}
-          onRefresh={() => showCommand(pairing.id)}
+          onReplace={() => showCommand(pairing.id, true)}
         /> : null}
 
         {hosts.items.length ? <div className="cn-list">

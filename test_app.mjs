@@ -56,7 +56,7 @@ test('a new machine starts with an editable default name; Enter creates it and s
     await page.getByPlaceholder('My MacBook').press('Enter')
     await page.getByText('curl https://fixture.test/pair | sh').waitFor()
     assert.deepEqual(requests.find(item => item.method === 'POST').body, { name: 'My machine' })
-    assert.equal(await page.getByRole('button', { name: 'Refresh command' }).count(), 1)
+    assert.equal(await page.getByRole('button', { name: 'Make a new command' }).count(), 1)
     await page.getByRole('button', { name: 'Add machine' }).click()
     assert.equal(await page.getByPlaceholder('My MacBook').inputValue(), 'My machine')
   } finally { await browser.close() }

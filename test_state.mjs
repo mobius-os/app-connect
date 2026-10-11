@@ -95,7 +95,7 @@ test('offline disconnect distinguishes local uninstall from forgetting the conne
 test('an unpaired entry is removed without implying that a runner exists', () => {
   assert.deepEqual(disconnectPresentation({ name: 'Host', paired: false, online: false }), {
     title: 'Host hasn’t paired yet',
-    description: 'Show a fresh pairing command, or remove this saved entry.',
+    description: 'Show its pairing command, or remove this saved entry.',
     actionLabel: 'Remove machine',
     commandTitle: null,
     commandDescription: null,

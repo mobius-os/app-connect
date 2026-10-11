@@ -111,7 +111,7 @@ export function disconnectPresentation(host) {
   if (!host?.paired) {
     return {
       title: `${name} hasn’t paired yet`,
-      description: 'Show a fresh pairing command, or remove this saved entry.',
+      description: 'Show its pairing command, or remove this saved entry.',
       actionLabel: 'Remove machine',
       commandTitle: null,
       commandDescription: null,

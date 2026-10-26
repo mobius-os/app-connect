@@ -159,6 +159,10 @@ const CSS = `
   .cn-step-t { margin: 2px 0 7px; font-size: 12.5px; line-height: 1.45; }
   .cn-code-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: stretch; }
   .cn-code { min-width: 0; max-height: 100px; overflow: auto; padding: 10px 11px; border-radius: 9px; background: var(--bg); border: 1px solid var(--border); color: var(--text); font: 11.5px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; overflow-wrap: anywhere; cursor: text; user-select: all; -webkit-user-select: all; }
+  .cn-os { display: inline-flex; gap: 2px; margin: 0 0 8px; padding: 2px; border: 1px solid var(--border); border-radius: 9px; background: var(--bg); }
+  .cn-os-btn { min-height: 30px; padding: 0 12px; border: 0; border-radius: 7px; color: var(--muted); background: transparent; font: 650 12px var(--font); cursor: pointer; }
+  .cn-os-btn[aria-pressed="true"] { color: var(--text); background: var(--surface-2); box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+  .cn-os-btn:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
   .cn-hint { margin-top: 6px; color: var(--muted); font-size: 11.5px; line-height: 1.4; }
   .cn-pair-refresh { margin-left: 5px; padding: 2px 4px; border: 0; border-radius: 4px; background: transparent; color: var(--cn-violet); font: inherit; font-weight: 680; text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
   .cn-pair-refresh:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
@@ -234,6 +238,8 @@ function relTime(timestamp) {
 }
 
 function PairingPanel({ pairing, onDone, onRefresh, stale }) {
+  // Mac or Linux is the default, even in a Windows browser; Windows is an explicit choice.
+  const [windows, setWindows] = useState(false)
   const expires = pairing.expires_at ? new Date(pairing.expires_at * 1000).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : null
   return <section className="cn-pairing" aria-labelledby="cn-pair-title">
     <div className="cn-card-head">
@@ -245,10 +251,16 @@ function PairingPanel({ pairing, onDone, onRefresh, stale }) {
     <div className="cn-step">
       <span className="cn-step-n">1</span>
       <div>
-        <p className="cn-step-t">Run this command on the machine. It only needs Python 3.</p>
-        <CopyCommand command={pairing.install_command}/>
+        {pairing.windows_install_command ? <div className="cn-os" role="group" aria-label="Machine type">
+          <button type="button" className="cn-os-btn" aria-pressed={!windows} onClick={() => setWindows(false)}>Mac or Linux</button>
+          <button type="button" className="cn-os-btn" aria-pressed={windows} onClick={() => setWindows(true)}>Windows</button>
+        </div> : null}
+        <p className="cn-step-t">{windows
+          ? 'Run this in PowerShell on the machine. It only needs Python 3.'
+          : 'Run this command in a terminal on the machine. It only needs Python 3.'}</p>
+        <CopyCommand command={windows ? pairing.windows_install_command : pairing.install_command}/>
         <div className="cn-hint">
-          Installs a background service that reconnects after reboot. {expires ? `Expires at ${expires}.` : 'This command expires after 15 minutes.'} <button className="cn-pair-refresh" onClick={onRefresh} disabled={stale}>Refresh command</button>
+          {windows ? 'Runs in the background and starts again when you sign in to Windows.' : 'Installs a background service that reconnects after reboot.'} {expires ? `Expires at ${expires}.` : 'This command expires after 15 minutes.'} <button className="cn-pair-refresh" onClick={onRefresh} disabled={stale}>Refresh command</button>
         </div>
       </div>
     </div>

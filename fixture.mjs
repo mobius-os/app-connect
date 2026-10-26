@@ -22,13 +22,14 @@ export async function bundle(source) {
 }
 
 // `answer({ method, path, query, body })` returns { status, body }, { abort: true }
-// for a lost connection, or nothing for a 404.
-export async function open(script, answer) {
+// for a lost connection, or nothing for a 404. `pageOptions` go to Playwright's
+// newPage, e.g. { userAgent } to simulate another device.
+export async function open(script, answer, pageOptions = {}) {
   const browser = await chromium.launch({
     headless: true,
     ...(process.env.CONNECT_TEST_BROWSER_EXECUTABLE ? { executablePath: process.env.CONNECT_TEST_BROWSER_EXECUTABLE } : {}),
   })
-  const page = await browser.newPage()
+  const page = await browser.newPage(pageOptions)
   const requests = []
   await page.route('http://fixture.test/**', async route => {
     const request = route.request()

@@ -26,6 +26,11 @@ const CSS = `
   * { scrollbar-width: thin; scrollbar-color: color-mix(in srgb, var(--muted) 45%, transparent) transparent; }
   .cn-root {
     --cn-violet: #7c67f8; --cn-mint: #43c6aa;
+    /* Text-safe status colours: theme text roles when present, else the hue pulled toward --text (AA in light and dark). */
+    --cn-ok-text: var(--green-text, color-mix(in srgb, #36b999, var(--text) 55%));
+    --cn-warn-text: var(--warning-text, color-mix(in srgb, #d7a848, var(--text) 60%));
+    --cn-error-text: var(--danger-text, color-mix(in srgb, #e5484d, var(--text) 40%));
+    --cn-violet-text: color-mix(in srgb, var(--cn-violet), var(--text) 40%);
     min-height: 100%; color: var(--text); background: var(--bg); font-family: var(--font);
   }
   .cn-head { width: 100%; background: var(--bg); }
@@ -89,7 +94,7 @@ const CSS = `
   .cn-agent-toggle input:focus-visible { outline: none; }
 
   .cn-message { margin: 0 0 16px; padding: 12px 14px; border-radius: 12px; font-size: 13px; line-height: 1.45; }
-  .cn-error { color: #ffb7ba; background: color-mix(in srgb, #e5484d 12%, var(--surface)); border: 1px solid color-mix(in srgb, #e5484d 34%, var(--border)); }
+  .cn-error { color: var(--cn-error-text); background: color-mix(in srgb, #e5484d 12%, var(--surface)); border: 1px solid color-mix(in srgb, #e5484d 34%, var(--border)); }
   .cn-notice { background: var(--surface); border: 1px solid var(--border); }
   .cn-notice strong { display: block; margin-bottom: 2px; }
   .cn-loading { padding: 50px 0; color: var(--muted); font-size: 13px; text-align: center; }
@@ -112,9 +117,9 @@ const CSS = `
   .cn-host-meta, .cn-outbound-meta { display: block; margin-top: 4px; color: var(--muted); font-size: 11.5px; }
   .cn-pill { display: inline-flex; align-items: center; gap: 5px; padding: 0; color: var(--muted); font-size: 11px; font-weight: 680; }
   .cn-pill-dot { position: relative; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
-  .cn-pill.on { color: #36b999; }
-  .cn-pill.wait { color: #d7a848; }
-  .cn-pill.busy { color: #a99afc; }
+  .cn-pill.on { color: var(--cn-ok-text); }
+  .cn-pill.wait { color: var(--cn-warn-text); }
+  .cn-pill.busy { color: var(--cn-violet-text); }
   .cn-toggle-mark { position: relative; z-index: 1; pointer-events: none; flex: none; width: 28px; height: 28px; display: grid; place-items: center; color: var(--muted); transition: transform 160ms ease-out; }
   .cn-toggle-mark.is-open { transform: rotate(180deg); }
 
@@ -133,8 +138,8 @@ const CSS = `
   .cn-inline-confirm { display: flex; align-items: center; gap: 8px; }
   .cn-inline-action { min-height: 44px; }
   .cn-update-result { margin: 10px 0 0; }
-  .cn-update-result.is-waiting { color: #d7a848; }
-  .cn-update-result.is-error { color: #ffb7ba; }
+  .cn-update-result.is-waiting { color: var(--cn-warn-text); }
+  .cn-update-result.is-error { color: var(--cn-error-text); }
   .cn-disconnect-alt-title, .cn-update-manual-title { margin: 0 0 9px; font-size: 12px; font-weight: 680; }
   .cn-disconnect-alt-copy { margin: 0 0 9px; color: var(--muted); font-size: 11.5px; line-height: 1.45; }
   .cn-command-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
@@ -153,27 +158,27 @@ const CSS = `
   .cn-pairing { margin: 0 0 14px; padding: 15px; border-radius: 14px; background: var(--surface); border: 1px solid color-mix(in srgb, var(--cn-violet) 34%, var(--border)); }
   .cn-card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
   .cn-card-title { margin: 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; font-weight: 680; }
-  .cn-card-title span { color: #a99afc; }
+  .cn-card-title span { color: var(--cn-violet-text); }
   .cn-step { display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 9px; margin-top: 12px; }
-  .cn-step-n { width: 22px; height: 22px; display: grid; place-items: center; border-radius: 50%; color: #a99afc; background: color-mix(in srgb, var(--cn-violet) 13%, var(--surface-2)); font-size: 11px; font-weight: 720; }
+  .cn-step-n { width: 22px; height: 22px; display: grid; place-items: center; border-radius: 50%; color: var(--cn-violet-text); background: color-mix(in srgb, var(--cn-violet) 13%, var(--surface-2)); font-size: 11px; font-weight: 720; }
   .cn-step-t { margin: 2px 0 7px; font-size: 12.5px; line-height: 1.45; }
   .cn-code-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: stretch; }
   .cn-code { min-width: 0; max-height: 100px; overflow: auto; padding: 10px 11px; border-radius: 9px; background: var(--bg); border: 1px solid var(--border); color: var(--text); font: 11.5px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; overflow-wrap: anywhere; cursor: text; user-select: all; -webkit-user-select: all; }
   .cn-hint { margin-top: 6px; color: var(--muted); font-size: 11.5px; line-height: 1.4; }
-  .cn-pair-refresh { margin-left: 5px; padding: 2px 4px; border: 0; border-radius: 4px; background: transparent; color: var(--cn-violet); font: inherit; font-weight: 680; text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
+  .cn-pair-refresh { margin-left: 5px; padding: 2px 4px; border: 0; border-radius: 4px; background: transparent; color: var(--cn-violet-text); font: inherit; font-weight: 680; text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
   .cn-pair-refresh:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
   .cn-copybtn { min-width: 120px; }
-  .cn-copybtn.is-copied { color: #36b999; border-color: color-mix(in srgb, var(--cn-mint) 35%, var(--border)); background: color-mix(in srgb, var(--cn-mint) 9%, var(--surface)); }
+  .cn-copybtn.is-copied { color: var(--cn-ok-text); border-color: color-mix(in srgb, var(--cn-mint) 35%, var(--border)); background: color-mix(in srgb, var(--cn-mint) 9%, var(--surface)); }
 
   .cn-browser-warning { max-width: 67ch; margin: 12px 0; color: var(--text); font-size: 12.5px; line-height: 1.5; }
   .cn-browser-note { margin: 9px 0 15px; color: var(--muted); font-size: 11.5px; line-height: 1.45; }
   .cn-browser-create { margin-top: 13px; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 10px; }
   .cn-browser-create > .cn-btn { min-height: 46px; }
-  .cn-browser-action-error { margin: 12px 0; color: #ffb7ba; font-size: 12px; line-height: 1.45; }
+  .cn-browser-action-error { margin: 12px 0; color: var(--cn-error-text); font-size: 12px; line-height: 1.45; }
   .cn-browser-row { min-height: 72px; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--border); }
   .cn-browser-person { min-width: 0; }
   .cn-browser-person .cn-outbound-name { display: block; }
-  .cn-browser-stop-warning { display: block; max-width: 46ch; margin-top: 5px; color: #d7a848; font-size: 11.5px; line-height: 1.4; }
+  .cn-browser-stop-warning { display: block; max-width: 46ch; margin-top: 5px; color: var(--cn-warn-text); font-size: 11.5px; line-height: 1.4; }
   .cn-browser-row-action { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
   .cn-browser-row-action .cn-btn { min-width: 0; padding: 0 8px; }
   .cn-browser-retry { flex: none; }
@@ -183,7 +188,7 @@ const CSS = `
   .cn-rename { pointer-events: auto; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; width: 100%; }
   .cn-rename .cn-input { height: 40px; flex: 1; min-width: 0; }
   .cn-rename-actions { display: flex; gap: 8px; flex: none; }
-  .cn-rename-error { flex-basis: 100%; margin: 0; color: #ffb7ba; font-size: 11.5px; line-height: 1.35; }
+  .cn-rename-error { flex-basis: 100%; margin: 0; color: var(--cn-error-text); font-size: 11.5px; line-height: 1.35; }
 
   @media (prefers-reduced-motion: reduce) { .cn-btn, .cn-toggle-mark, .cn-agent-toggle { transition: none; } }
   @media (max-width: 560px) {

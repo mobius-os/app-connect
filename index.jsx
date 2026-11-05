@@ -165,7 +165,7 @@ const CSS = `
   .cn-code-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: stretch; }
   .cn-code { min-width: 0; max-height: 100px; overflow: auto; padding: 10px 11px; border-radius: 9px; background: var(--bg); border: 1px solid var(--border); color: var(--text); font: 11.5px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; overflow-wrap: anywhere; cursor: text; user-select: all; -webkit-user-select: all; }
   .cn-hint { margin-top: 6px; color: var(--muted); font-size: 11.5px; line-height: 1.4; }
-  .cn-pair-refresh { margin-left: 5px; padding: 2px 4px; border: 0; border-radius: 4px; background: transparent; color: var(--cn-violet); font: inherit; font-weight: 680; text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
+  .cn-pair-refresh { margin-left: 5px; padding: 2px 4px; border: 0; border-radius: 4px; background: transparent; color: var(--cn-violet-text); font: inherit; font-weight: 680; text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
   .cn-pair-refresh:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
   .cn-copybtn { min-width: 120px; }
   .cn-copybtn.is-copied { color: var(--cn-ok-text); border-color: color-mix(in srgb, var(--cn-mint) 35%, var(--border)); background: color-mix(in srgb, var(--cn-mint) 9%, var(--surface)); }

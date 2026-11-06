@@ -276,6 +276,10 @@ def _matches(hosts, machine):
     if exact:
         return exact
     needle = machine.lower()
+    # "web" must pick the machine named "web", not also "web-staging".
+    named = [host for host in hosts if (host.get("name") or "").lower() == needle]
+    if named:
+        return named
     return [
         host for host in hosts
         if needle in (host.get("name") or "").lower()

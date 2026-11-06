@@ -24,7 +24,7 @@ function server(grants, write = () => undefined) {
     : write(request)
 }
 
-const WARNING = 'People with access can read shared data and take powerful actions in this Möbius.'
+const WARNING = 'People with access can read shared data and take powerful actions in this Möbius, including running commands on your paired machines.'
 
 test('inviting asks only for a handle and shows the trust warning while open', async () => {
   const { browser, page } = await open(script, server([link()]))
@@ -286,5 +286,25 @@ test('a pending account share can be invited again, retrying its reserved grant'
     await page.getByRole('button', { name: 'Invite again' }).click()
     await page.getByText('Verified mobius.you account · Access until revoked').waitFor()
     assert.deepEqual(requests.filter(item => item.method === 'POST').map(item => item.body), [{ recipient_handle: 'friend' }])
+  } finally { await browser.close() }
+})
+
+test('Full access is a per-person switch, shown only where the runtime reports it', async () => {
+  const grants = [{ ...account(), full_access: false }, { ...link(), id: 'g2', label: 'Old runtime' }]
+  const { browser, page, requests } = await open(script, server(grants, request => {
+    if (request.method !== 'PATCH') return undefined
+    grants[0] = { ...grants[0], full_access: request.body.full_access }
+    return { body: { grant: grants[0] } }
+  }))
+  try {
+    const toggle = page.getByRole('checkbox', { name: 'Full access' })
+    await toggle.waitFor()
+    assert.equal(await toggle.count(), 1)
+    assert.equal(await toggle.isChecked(), false)
+    await toggle.click()
+    await page.waitForFunction(() => document.querySelector('.cn-agent-toggle.is-on'))
+    const patch = requests.find(item => item.method === 'PATCH')
+    assert.deepEqual(patch, { method: 'PATCH', path: ENDPOINT + '/a1', query: '', body: { full_access: true } })
+    assert.equal(await toggle.isChecked(), true)
   } finally { await browser.close() }
 })

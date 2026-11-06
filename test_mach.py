@@ -97,6 +97,15 @@ class MachTargetingTest(unittest.TestCase):
         ]
         self.assertEqual(mach._matches(hosts, "desk"), hosts)
 
+    def test_exact_name_wins_over_longer_names_containing_it(self):
+        mach = load_mach()
+        hosts = [
+            {"id": "h_web", "name": "Web", "online": True},
+            {"id": "h_staging", "name": "web-staging", "online": True},
+        ]
+        self.assertEqual(mach._matches(hosts, "web"), [hosts[0]])
+        self.assertEqual(mach._matches(hosts, "stag"), [hosts[1]])
+
     def test_invalid_timeout_is_a_bounded_user_error(self):
         mach = load_mach()
         stderr = io.StringIO()

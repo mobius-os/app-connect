@@ -301,7 +301,7 @@ function DisconnectPanel({
 }
 
 function OutboundAccess({
-  connections, open, label, command, agent, agentSupported, pending, confirmingId, stale,
+  connections, open, label, command, agent, agentSupported, pending, confirmingId, stale, revokeNotice,
   onOpen, onCancel, onLabel, onCommand, onAgent, onGrant, onConfirm, onKeep, onRevoke, onToggleAgent,
 }) {
   return <section className="cn-section" aria-labelledby="cn-access-title">
@@ -354,6 +354,7 @@ function OutboundAccess({
       </div>
     </div> : null}
 
+    {revokeNotice ? <p className="cn-browser-note" role="status">{revokeNotice}</p> : null}
     {connections.length ? <div className="cn-list" aria-label="Machines that can control this Möbius">
       {connections.map(connection => {
         const confirming = confirmingId === connection.id
@@ -727,6 +728,7 @@ export default function App({ appId, token }) {
   const [accessLabel, setAccessLabel] = useState('')
   const [accessCommand, setAccessCommand] = useState('')
   const [sharingOpen, setSharingOpen] = useState(false)
+  const [revokeNotice, setRevokeNotice] = useState(null)
   const [accessAgent, setAccessAgent] = useState(false)
   const readySignalled = useRef(false)
   const action = useAction()
@@ -989,7 +991,12 @@ export default function App({ appId, token }) {
   const revokeOutboundAccess = connection => action.run(`revoke:${connection.id}`, async () => {
     const response = await fetch(`/api/connect/outbound/${connection.id}`, { method: 'DELETE', headers: headers() })
     if (!response.ok && response.status !== 404) throw await serverError(response)
+    const result = response.ok ? await response.json().catch(() => null) : null
     setConfirmation(null)
+    // Access always ends here; only the other Möbius's own record may lag.
+    setRevokeNotice(result?.remote_notified === false
+      ? `${connection.label} no longer has access. Its Möbius couldn’t be reached, so it may still list this connection as offline.`
+      : null)
     outbound.update(items => items.filter(item => item.id !== connection.id))
     window.mobius.signal('item_deleted', { type: 'outbound_access' })
     await outbound.reload()
@@ -1118,6 +1125,7 @@ export default function App({ appId, token }) {
       {outbound.status === 'ready' || outboundStale ? <OutboundAccess
         connections={outbound.items}
         stale={outboundStale}
+        revokeNotice={revokeNotice}
         open={sharingOpen}
         label={accessLabel}
         command={accessCommand}

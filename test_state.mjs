@@ -78,7 +78,7 @@ test('online disconnect makes the button primary and explains the local fallback
     description: 'You’ll confirm before Connect is uninstalled and this saved connection is removed.',
     actionLabel: 'Disconnect machine',
     commandTitle: 'Otherwise, run it on Host',
-    commandDescription: 'This command performs the same cleanup locally. Use it when Möbius can’t reach the machine.',
+    commandDescription: 'Use it when Möbius can’t reach the machine. Unlike the button, it removes Connect from the machine entirely, ending its connections to any other Möbius too.',
   })
 })
 
@@ -88,7 +88,7 @@ test('offline disconnect distinguishes local uninstall from forgetting the conne
     description: 'Möbius can’t ask it to uninstall Connect right now.',
     actionLabel: 'Remove saved connection',
     commandTitle: 'Remove Connect on Host',
-    commandDescription: 'Run this command on the machine to remove the local service. Then remove its saved connection here.',
+    commandDescription: 'Run this command on the machine to remove Connect from it. This also ends its connections to any other Möbius. When it can reach this Möbius, it removes this saved connection too.',
   })
 })
 

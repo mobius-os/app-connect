@@ -47,6 +47,24 @@ test('full access is offered only where the platform supports it, and toggles in
   } finally { await browser.close() }
 })
 
+test('revoke ends access here even when the other Möbius cannot be told, and says so', async () => {
+  let connections = [{ id: 'o1', label: 'Studio', target: 'studio.example', online: false, status: 'error', agent: true }]
+  const { browser, page } = await open(script, request => {
+    if (request.method === 'DELETE' && request.path === '/api/connect/outbound/o1') {
+      connections = []
+      return { body: { ok: true, remote_notified: false } }
+    }
+    return machines({ connections })(request)
+  })
+  try {
+    await page.getByRole('button', { name: 'Remove access' }).click()
+    await page.getByRole('button', { name: 'Confirm remove' }).click()
+    await page.getByText(/Studio no longer has access\. Its Möbius couldn’t be reached/).waitFor()
+    assert.equal(await page.getByText('Studio', { exact: true }).count(), 0)
+    assert.equal(await page.getByRole('alert').count(), 0)
+  } finally { await browser.close() }
+})
+
 test('a new machine starts with an editable default name; Enter creates it and shows pairing', async () => {
   const { browser, page, requests } = await open(script, machines({ hosts: [], write: request => request.method === 'POST'
     ? { body: { id: 'h2', name: request.body.name, install_command: 'curl https://fixture.test/pair | sh' } } : undefined }))

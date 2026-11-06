@@ -97,3 +97,24 @@ test('Not now marks read without accepting; Accept remains available and accepts
     assert.deepEqual(responses[0].body, { origin: instance.origin, grant_id, action: 'later' })
   } finally { await browser.close() }
 })
+
+test('recipients can leave or decline on the sharing Möbius without waiting for its owner', async () => {
+  const accepted = { grant_id: 'a'.repeat(24), name: 'Studio', origin: 'https://shared.example', owner_handle: 'alex', status: 'accepted', unread: false,
+    open_url: 'https://shared.example/api/connect/browser-access/session/account/start?grant_id=' + 'a'.repeat(24),
+    leave_url: 'https://shared.example/api/connect/browser-access/session/account/leave/start?grant_id=' + 'a'.repeat(24) }
+  const invited = { ...accepted, grant_id: 'b'.repeat(24), name: 'Lab', status: 'invited', unread: true,
+    leave_url: 'https://shared.example/api/connect/browser-access/session/account/leave/start?grant_id=' + 'b'.repeat(24) }
+  const older = { ...accepted, grant_id: 'c'.repeat(24), name: 'Old', leave_url: undefined }
+  const { browser, page } = await fixture({ body: { instances: [accepted, invited, older] } })
+  try {
+    const leave = page.getByRole('link', { name: 'Leave' })
+    await leave.waitFor()
+    // Only the runtime-supplied link is used; an older runtime offers none.
+    assert.equal(await leave.count(), 1)
+    assert.equal(await leave.getAttribute('href'), accepted.leave_url)
+    assert.equal(await leave.getAttribute('target'), '_blank')
+    assert.equal(await leave.getAttribute('rel'), 'noopener noreferrer')
+    const decline = page.getByRole('link', { name: 'Decline' })
+    assert.equal(await decline.getAttribute('href'), invited.leave_url)
+  } finally { await browser.close() }
+})

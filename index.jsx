@@ -732,8 +732,6 @@ export default function App({ appId, token }) {
   const [accessAgent, setAccessAgent] = useState(false)
   const readySignalled = useRef(false)
   const action = useAction()
-  // Any next action supersedes the last revoke's note.
-  useEffect(() => { if (action.pending.length) setRevokeNotice(null) }, [action.pending])
   const pending = key => action.pending.includes(key)
 
   const headers = useCallback((extra = {}) => ({
@@ -750,6 +748,11 @@ export default function App({ appId, token }) {
   })
   const outbound = usePolledList('/api/connect/outbound', 'connections', 'Shared access', headers, { poll: onMachines })
   const directory = useSharedDirectory(headers)
+  // Any next action, in any section, supersedes the last revoke's note.
+  const clearRevokeNotice = useCallback(() => setRevokeNotice(null), [])
+  useEffect(() => {
+    if (action.pending.length || directory.action.pending.length) clearRevokeNotice()
+  }, [action.pending, directory.action.pending, clearRevokeNotice])
   const machinesStale = hosts.status === 'stale'
   const outboundStale = outbound.status === 'stale'
 
@@ -1148,7 +1151,7 @@ export default function App({ appId, token }) {
       /> : null}
       </div>
       <div className="cn-tab-panel cn-shared-panel" id="cn-panel-shared" role="tabpanel" aria-labelledby="cn-tab-shared" hidden={onMachines}>
-        <BrowserAccessSection headers={headers} poll={!onMachines} confirmation={confirmation} setConfirmation={setConfirmation}/>
+        <BrowserAccessSection headers={headers} poll={!onMachines} confirmation={confirmation} setConfirmation={setConfirmation} onAction={clearRevokeNotice}/>
         <SharedWithMe directory={directory}/>
       </div>
     </main>

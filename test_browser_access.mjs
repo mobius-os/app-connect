@@ -294,6 +294,8 @@ test('Full access is a per-person switch on active rows, shown only where the ru
     { ...account(), full_access: false },
     { ...account('inactive'), id: 'a2', recipient_handle: 'former', full_access: false },
     { ...link(), id: 'g2', label: 'Old runtime' },
+    // A one-time link is a bare cookie: never offered Full access.
+    { ...link(), id: 'g3', label: 'Link guest', full_access: false },
   ]
   const { browser, page, requests } = await open(script, server(grants, request => {
     if (request.method !== 'PATCH') return undefined
@@ -343,5 +345,21 @@ test('a revoke whose stop step failed shows revoked but still stopping, with ret
     await page.getByText('Some work is still stopping; stop confirmation is pending.').waitFor()
     await page.getByRole('button', { name: 'Retry stop' }).waitFor()
     assert.equal(await page.getByRole('alert').count(), 0)
+  } finally { await browser.close() }
+})
+
+test('the Full access switch is disabled while the list is stale', async () => {
+  let loads = 0
+  const { browser, page, requests } = await open(script, () => {
+    loads += 1
+    return loads === 1 ? { body: { grants: [{ ...account(), full_access: false }] } } : { status: 503 }
+  })
+  try {
+    const toggle = page.getByRole('checkbox', { name: 'Full access for friend', exact: true })
+    await toggle.waitFor()
+    await page.getByRole('button', { name: 'Invite person', exact: true }).click()
+    await page.getByText('Showing the last successful list.').waitFor({ timeout: 8000 })
+    assert.equal(await toggle.isDisabled(), true)
+    assert.equal(requests.filter(item => item.method === 'PATCH').length, 0)
   } finally { await browser.close() }
 })

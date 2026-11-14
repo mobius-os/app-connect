@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Plus } from '@openai/apps-sdk-ui/components/Icon'
 import { serverError } from './connect-api.mjs'
 import { InlineActionConfirm, ListNote, useAction, usePolledList } from './connect-ui.jsx'
@@ -96,9 +96,10 @@ function revokeFallback(grant) {
   return 'Couldn’t confirm that access was revoked. Check the list before trying again.'
 }
 
-export default function BrowserAccessSection({ headers, poll = true, confirmation, setConfirmation }) {
+export default function BrowserAccessSection({ headers, poll = true, confirmation, setConfirmation, onAction }) {
   const grants = usePolledList(ENDPOINT, 'grants', 'Shared access', headers, { poll })
   const action = useAction()
+  useEffect(() => { if (action.pending.length) onAction?.() }, [action.pending, onAction])
   const [inviting, setInviting] = useState(false)
   const [handle, setHandle] = useState('')
 
@@ -202,9 +203,9 @@ export default function BrowserAccessSection({ headers, poll = true, confirmatio
           {grant.status === 'revoked' ? <button className="cn-btn cn-btn-ghost cn-btn-sm cn-browser-retry" onClick={() => revoke(grant)} disabled={locked}>
             {action.pending.includes(`revoke:${grant.id}`) ? 'Retrying…' : grant.directory_cleanup_pending ? 'Retry cleanup' : 'Retry stop'}
           </button> : <div className="cn-browser-row-action">
-            {/* Runtimes from before per-person Full access send no flag, and
-                only a live grant can use it. */}
-            {typeof grant.full_access === 'boolean' && grant.status === 'active' ? <label
+            {/* Only a live account grant proves who the person is; older
+                runtimes send no flag. */}
+            {grant.kind === 'account' && typeof grant.full_access === 'boolean' && grant.status === 'active' ? <label
               className={`cn-agent-toggle${grant.full_access ? ' is-on' : ''}`}
               title="Also lets this person, and the agents they start, manage chats, apps, settings and updates. Your accounts, keys, credit, skills and sharing stay yours."
             >

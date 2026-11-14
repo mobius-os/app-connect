@@ -24,7 +24,7 @@ function server(grants, write = () => undefined) {
     : write(request)
 }
 
-const WARNING = 'People with access can read shared data and take powerful actions in this Möbius.'
+const WARNING = 'People with access can read shared data and take powerful actions in this Möbius, including running commands on your paired machines.'
 
 test('inviting asks only for a handle and shows the trust warning while open', async () => {
   const { browser, page } = await open(script, server([link()]))
@@ -286,5 +286,84 @@ test('a pending account share can be invited again, retrying its reserved grant'
     await page.getByRole('button', { name: 'Invite again' }).click()
     await page.getByText('Verified mobius.you account · Access until revoked').waitFor()
     assert.deepEqual(requests.filter(item => item.method === 'POST').map(item => item.body), [{ recipient_handle: 'friend' }])
+  } finally { await browser.close() }
+})
+
+test('Full access is a per-person switch on active rows, shown only where the runtime reports it', async () => {
+  const grants = [
+    { ...account(), full_access: false },
+    { ...account('inactive'), id: 'a2', recipient_handle: 'former', full_access: false },
+    { ...link(), id: 'g2', label: 'Old runtime' },
+    // A one-time link is a bare cookie: never offered Full access.
+    { ...link(), id: 'g3', label: 'Link guest', full_access: false },
+  ]
+  const { browser, page, requests } = await open(script, server(grants, request => {
+    if (request.method !== 'PATCH') return undefined
+    grants[0] = { ...grants[0], full_access: request.body.full_access }
+    return { body: { grant: grants[0] } }
+  }))
+  try {
+    const toggle = page.getByRole('checkbox', { name: 'Full access for friend', exact: true })
+    await toggle.waitFor()
+    // Each row's switch names its person; inactive rows and older runtimes have none.
+    assert.equal(await page.getByRole('checkbox').count(), 1)
+    assert.equal(await toggle.isChecked(), false)
+    // What it allows is visible text, not only a tooltip phones never show.
+    await page.getByText(/^Full access also lets that person.*sharing stay yours\.$/).waitFor()
+    await toggle.click()
+    await page.waitForFunction(() => document.querySelector('.cn-agent-toggle.is-on'))
+    const patch = requests.find(item => item.method === 'PATCH')
+    assert.deepEqual(patch, { method: 'PATCH', path: ENDPOINT + '/a1', query: '', body: { full_access: true } })
+    assert.equal(await toggle.isChecked(), true)
+  } finally { await browser.close() }
+})
+
+for (const [failure, answer] of [
+  ['is refused', { status: 500, body: { detail: 'Database unavailable.' } }],
+  ['gets an unexpected answer', { body: { grant: { id: 'a1', full_access: false } } }],
+]) {
+  test(`a Full access change that ${failure} says so and keeps the switch off`, async () => {
+    const grants = [{ ...account(), full_access: false }]
+    const { browser, page } = await open(script, server(grants, request => request.method === 'PATCH' ? answer : undefined))
+    try {
+      const toggle = page.getByRole('checkbox', { name: 'Full access for friend', exact: true })
+      await toggle.click()
+      await page.getByRole('alert').waitFor()
+      assert.equal(await toggle.isChecked(), false)
+    } finally { await browser.close() }
+  })
+}
+
+test('a revoke whose stop step failed shows revoked but still stopping, with retry', async () => {
+  const grants = [account()]
+  const { browser, page } = await open(script, server(grants, request => {
+    if (request.method !== 'DELETE') return undefined
+    // The list never says stop_pending, so only the revoke's own 202 answer
+    // can show the row as still stopping.
+    grants[0] = { ...grants[0], status: 'revoked', stop_pending: false }
+    return { status: 202, body: { revoked: true, pending_commands: [], pending_chat_ids: [], stop_incomplete: true } }
+  }))
+  try {
+    await page.getByRole('button', { name: 'Revoke' }).click()
+    await page.getByRole('button', { name: 'Confirm revoke' }).click()
+    await page.getByText('Some work is still stopping; stop confirmation is pending.').waitFor()
+    await page.getByRole('button', { name: 'Retry stop' }).waitFor()
+    assert.equal(await page.getByRole('alert').count(), 0)
+  } finally { await browser.close() }
+})
+
+test('the Full access switch is disabled while the list is stale', async () => {
+  let loads = 0
+  const { browser, page, requests } = await open(script, () => {
+    loads += 1
+    return loads === 1 ? { body: { grants: [{ ...account(), full_access: false }] } } : { status: 503 }
+  })
+  try {
+    const toggle = page.getByRole('checkbox', { name: 'Full access for friend', exact: true })
+    await toggle.waitFor()
+    await page.getByRole('button', { name: 'Invite person', exact: true }).click()
+    await page.getByText('Showing the last successful list.').waitFor({ timeout: 8000 })
+    assert.equal(await toggle.isDisabled(), true)
+    assert.equal(requests.filter(item => item.method === 'PATCH').length, 0)
   } finally { await browser.close() }
 })

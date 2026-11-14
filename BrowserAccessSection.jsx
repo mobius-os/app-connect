@@ -7,13 +7,17 @@ const ENDPOINT = '/api/connect/browser-access'
 // Runtimes from before error codes report an unlinked account only by this text.
 const UNLINKED_DETAIL = 'Link your mobius.you account in Identity first.'
 
+// Only a live account grant proves who the person is; older runtimes send no flag.
+const offersFullAccess = grant => grant.kind === 'account' && typeof grant.full_access === 'boolean' && grant.status === 'active'
+const FULL_ACCESS_NOTE = 'Full access also lets that person, and the agents they start, delete and recover chats and projects, permanently erase uninstalled apps (skipping their recovery window), apply updates or cancel ones not yet applied, restart, stop a chat’s compaction, set app badges and tidy notifications. Settings, your provider, accounts, keys, credit, skills, schedules and sharing stay yours.'
+
 const sameShare = (a, b) => a?.grant_id === b.grant_id && a?.origin === b.origin
 
-export function useSharedDirectory(headers) {
+export function useSharedDirectory(headers, { onAction } = {}) {
   // Each read goes through to mobius.you, so poll slowly; the app also reloads
   // it when the Shared tab opens and whenever the page becomes visible.
   const list = usePolledList(`${ENDPOINT}/shared`, 'instances', 'Shared Möbius', headers, { interval: 60000 })
-  const action = useAction()
+  const action = useAction({ onStart: onAction })
   const respond = (instance, choice) => action.run(`respond:${instance.grant_id}`, async () => {
     const response = await fetch(`${ENDPOINT}/shared/respond`, {
       method: 'POST', headers: headers({ 'Content-Type': 'application/json' }),
@@ -57,6 +61,14 @@ export function SharedWithMe({ directory }) {
               {instance.unread ? <button className="cn-btn cn-btn-ghost cn-btn-sm" disabled={locked} onClick={() => respond(instance, 'later')}>Not now</button> : null}
             </> : instance.status === 'accepted' && list.status === 'ready'
               ? <a className="cn-btn cn-btn-ghost cn-btn-sm" href={instance.open_url} target="_blank" rel="noopener noreferrer">Open</a> : null}
+            {/* Ending access runs on the sharing Möbius, which asks to confirm
+                and then checks it is really you. An up-to-date runtime sends
+                this link for every share; an older one sends none. */}
+            {instance.leave_url && list.status === 'ready'
+              ? <a className="cn-btn cn-btn-ghost cn-btn-sm" href={instance.leave_url} target="_blank" rel="noopener noreferrer"
+                title={`Give up your access to ${instance.name}. You won’t need to wait for ${instance.owner_handle || 'its owner'}.`}>
+                {invited ? 'Decline' : 'Leave'}
+              </a> : null}
           </div>
         </article>
       })}
@@ -88,9 +100,9 @@ function revokeFallback(grant) {
   return 'Couldn’t confirm that access was revoked. Check the list before trying again.'
 }
 
-export default function BrowserAccessSection({ headers, poll = true, confirmation, setConfirmation }) {
+export default function BrowserAccessSection({ headers, poll = true, confirmation, setConfirmation, onAction }) {
   const grants = usePolledList(ENDPOINT, 'grants', 'Shared access', headers, { poll })
-  const action = useAction()
+  const action = useAction({ onStart: onAction })
   const [inviting, setInviting] = useState(false)
   const [handle, setHandle] = useState('')
 
@@ -115,6 +127,17 @@ export default function BrowserAccessSection({ headers, poll = true, confirmatio
     putGrant(grant)
   }, 'Couldn’t confirm account access was added. Check the list before trying again.')
 
+  const setFullAccess = (grant, enabled) => action.run(`full:${grant.id}`, async () => {
+    const response = await fetch(`${ENDPOINT}/${encodeURIComponent(grant.id)}`, {
+      method: 'PATCH', headers: headers({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ full_access: enabled }),
+    })
+    if (!response.ok) throw await serverError(response)
+    const updated = (await response.json())?.grant
+    if (updated?.id !== grant.id || updated.full_access !== enabled) throw new Error('Unexpected response')
+    putGrant(updated)
+  }, 'Couldn’t confirm the Full access change. Check the list before trying again.')
+
   const revoke = grant => action.run(`revoke:${grant.id}`, async () => {
     const response = await fetch(`${ENDPOINT}/${encodeURIComponent(grant.id)}`, { method: 'DELETE', headers: headers() })
     if (!response.ok) throw await serverError(response)
@@ -123,7 +146,7 @@ export default function BrowserAccessSection({ headers, poll = true, confirmatio
     if (result?.revoked !== true) throw new Error('Unexpected response')
     putGrant({
       ...grant, status: 'revoked',
-      stop_pending: Boolean(result.pending_commands?.length || result.pending_chat_ids?.length),
+      stop_pending: Boolean(result.pending_commands?.length || result.pending_chat_ids?.length || result.stop_incomplete),
       directory_cleanup_pending: result.directory_cleanup_pending === true,
     })
     setConfirmation(null)
@@ -166,7 +189,7 @@ export default function BrowserAccessSection({ headers, poll = true, confirmatio
           {action.pending.includes(`invite:${recipient}`) ? 'Inviting…' : 'Invite'}
         </button>
       </form>
-      <p className="cn-browser-warning">People with access can read shared data and take powerful actions in this Möbius. Only invite someone you trust.</p>
+      <p className="cn-browser-warning">People with access can read shared data and take powerful actions in this Möbius, including running commands on your paired machines. Only invite someone you trust.</p>
     </> : null}
     {action.error ? <p className="cn-browser-action-error" role="alert">{action.error}</p> : null}
     {hasList ? shown.length ? <div className="cn-list" aria-label="Browser access grants">
@@ -183,6 +206,13 @@ export default function BrowserAccessSection({ headers, poll = true, confirmatio
           {grant.status === 'revoked' ? <button className="cn-btn cn-btn-ghost cn-btn-sm cn-browser-retry" onClick={() => revoke(grant)} disabled={locked}>
             {action.pending.includes(`revoke:${grant.id}`) ? 'Retrying…' : grant.directory_cleanup_pending ? 'Retry cleanup' : 'Retry stop'}
           </button> : <div className="cn-browser-row-action">
+            {offersFullAccess(grant) ? <label
+              className={`cn-agent-toggle${grant.full_access ? ' is-on' : ''}`}
+              title={FULL_ACCESS_NOTE}
+            >
+              <input type="checkbox" checked={grant.full_access} disabled={locked} aria-label={`Full access for ${name}`}
+                onChange={event => setFullAccess(grant, event.target.checked)}/>Full access
+            </label> : null}
             {grant.kind === 'account' && (grant.status === 'inactive' || grant.status === 'pending') ? <button className="cn-btn cn-btn-ghost cn-btn-sm" onClick={() => invite(grant.recipient_handle)} disabled={locked}>
               {action.pending.includes(`invite:${grant.recipient_handle}`) ? 'Inviting…' : 'Invite again'}
             </button> : null}
@@ -202,5 +232,6 @@ export default function BrowserAccessSection({ headers, poll = true, confirmatio
         </article>
       })}
     </div> : <div className="cn-empty-row">No people with access yet.</div> : null}
+    {hasList && shown.some(offersFullAccess) ? <p className="cn-browser-note">{FULL_ACCESS_NOTE}</p> : null}
   </section>
 }

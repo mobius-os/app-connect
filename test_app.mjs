@@ -47,6 +47,90 @@ test('full access is offered only where the platform supports it, and toggles in
   } finally { await browser.close() }
 })
 
+test('revoke ends access here even when the other Möbius cannot be told, and says so', async () => {
+  let connections = [{ id: 'o1', label: 'Studio', target: 'studio.example', online: false, status: 'error', agent: true }]
+  const { browser, page } = await open(script, request => {
+    if (request.method === 'DELETE' && request.path === '/api/connect/outbound/o1') {
+      connections = []
+      return { body: { ok: true, remote_notified: false } }
+    }
+    return machines({ connections })(request)
+  })
+  try {
+    await page.getByRole('button', { name: 'Remove access' }).click()
+    await page.getByRole('button', { name: 'Confirm remove' }).click()
+    await page.getByText(/Studio no longer has access\. Its Möbius couldn’t be reached/).waitFor()
+    assert.equal(await page.getByText('Studio', { exact: true }).count(), 0)
+    assert.equal(await page.getByRole('alert').count(), 0)
+  } finally { await browser.close() }
+})
+
+test('the revoke note clears on the next unrelated action', async () => {
+  let connections = [
+    { id: 'o1', label: 'Studio', target: 'studio.example', online: false, status: 'error', agent: true },
+    { id: 'o2', label: 'Lab', target: 'lab.example', online: true, status: 'active', agent: false },
+  ]
+  const { browser, page } = await open(script, request => {
+    if (request.method === 'DELETE') {
+      connections = connections.filter(item => item.id !== 'o1')
+      return { body: { ok: true, remote_notified: false } }
+    }
+    if (request.method === 'PATCH') return { body: {} }
+    return machines({ connections, agent_access: true })(request)
+  })
+  try {
+    await page.getByRole('button', { name: 'Remove access' }).click()
+    await page.getByRole('button', { name: 'Confirm remove' }).click()
+    const note = page.getByText(/Studio no longer has access/)
+    await note.waitFor()
+    await page.getByRole('checkbox', { name: 'Full access' }).click()
+    await note.waitFor({ state: 'hidden' })
+  } finally { await browser.close() }
+})
+
+for (const [section, path, answer, act] of [
+  ['People with access', '/api/connect/browser-access/a1', { status: 204 }, async page => {
+    await page.getByRole('button', { name: 'Revoke', exact: true }).click()
+    await page.getByRole('button', { name: 'Confirm revoke' }).click()
+  }],
+  ['Shared with me', '/api/connect/browser-access/shared/respond', null, page =>
+    page.getByRole('button', { name: 'Not now' }).click()],
+]) {
+  test(`the revoke note also clears on an action in ${section}`, async () => {
+    let connections = [{ id: 'o1', label: 'Studio', target: 'studio.example', online: false, status: 'error', agent: true }]
+    const invitation = { grant_id: 'i'.repeat(24), name: 'Lab', origin: 'https://lab.example', owner_handle: 'alex', status: 'invited', unread: true,
+      open_url: 'https://lab.example/api/connect/browser-access/session/account/start?grant_id=' + 'i'.repeat(24) }
+    const acted = []
+    const { browser, page } = await open(script, request => {
+      if (request.method === 'DELETE' && request.path === '/api/connect/outbound/o1') {
+        connections = []
+        return { body: { ok: true, remote_notified: false } }
+      }
+      if (request.path === path && request.method !== 'GET') {
+        acted.push(request.path)
+        return answer || { body: { instance: { ...invitation, unread: false } } }
+      }
+      if (request.method === 'GET' && request.path === '/api/connect/browser-access') {
+        return { body: { grants: [{ id: 'a1', kind: 'account', recipient_handle: 'friend', status: 'active' }] } }
+      }
+      if (request.method === 'GET' && request.path === '/api/connect/browser-access/shared') {
+        return { body: { instances: [invitation] } }
+      }
+      return machines({ connections })(request)
+    })
+    try {
+      await page.getByRole('button', { name: 'Remove access' }).click()
+      await page.getByRole('button', { name: 'Confirm remove' }).click()
+      await page.getByText(/Studio no longer has access/).waitFor()
+      await page.getByRole('tab', { name: /Shared Möbius/ }).click()
+      await act(page)
+      while (!acted.length) await page.waitForTimeout(50)
+      await page.getByRole('tab', { name: 'Machines' }).click()
+      await page.getByText(/Studio no longer has access/).waitFor({ state: 'detached' })
+    } finally { await browser.close() }
+  })
+}
+
 test('a new machine starts with an editable default name; Enter creates it and shows pairing', async () => {
   const { browser, page, requests } = await open(script, machines({ hosts: [], write: request => request.method === 'POST'
     ? { body: { id: 'h2', name: request.body.name, install_command: 'curl https://fixture.test/pair | sh' } } : undefined }))

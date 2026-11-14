@@ -12,6 +12,27 @@ show **Open**, which goes to the account sign-in link this Möbius built for tha
 share. The account holder signs in from each browser; discovery alone does not
 grant access.
 
+A recipient never has to wait for the owner to end their access. **Leave** on an
+accepted entry, or **Decline** on an invitation, opens the sharing Möbius, which
+asks them to confirm and then checks their mobius.you account. Leaving is the
+owner's own revoke: every session ends, work the recipient started is stopped,
+and the entry leaves both lists. Coming back needs a new invitation. These
+buttons appear whenever this Möbius's runtime supplies a leave link, which an
+up-to-date runtime does for every share. A sharing Möbius too old to support
+leaving shows a page that cannot complete it.
+
+**Full access** on an active account row (never a one-time link) also lets that
+person, and the agents they start, delete and recover chats and projects,
+permanently erase an uninstalled app (skipping its recovery window), apply
+reviewed app and platform updates or cancel one not yet applied, restart this
+Möbius, watch and stop a chat's compaction, set an app's badge, and clear or
+mark notifications. It is a deliberate subset of a connected Möbius's Full access,
+off by default, and turning it off or revoking takes effect on their next
+request. It never covers settings or your provider and model, your accounts,
+keys and connections, credit, payments or app permissions, sharing and
+invitations, push notifications, schedules, reminders and skills, or new
+sign-in credentials, nor your own device's shared folders and screen.
+
 An owner can revoke access. Settled revoked rows disappear, but rows awaiting
 stop confirmation or directory cleanup remain visible and retryable. A failed
 refresh preserves the last list but pauses changes and Open.
@@ -20,14 +41,16 @@ One-time link invitations are retired: Connect no longer creates or re-issues
 them. Link grants made earlier still appear as **One-time link** rows and can be
 revoked. To share with that person again, invite their mobius.you handle.
 
-Lists refresh only while their tab is showing. **Shared with me** reads through
-to mobius.you, so it refreshes once a minute, when the tab opens, and when the
-page becomes visible again.
+Lists refresh only while their tab is showing, except **Shared with me**, which
+also drives the tab's unread badge. It reads through to mobius.you, so it
+refreshes once a minute, when the tab opens, and when the page becomes visible
+again.
 
 Sharing requires a directly reachable HTTPS instance. It is not screen sharing,
 a private-network tunnel, or isolated accounts. Guests can read shared data and
 take powerful workspace actions. Revocation cannot undo copied data or past
 changes; a remote command may still be stopping until its machine confirms it.
+People with access can also run commands on this Möbius's paired machines.
 
 ## Tests
 
@@ -61,20 +84,22 @@ token minted at pairing.
 
 ## Pairing
 
-1. In this app, name a machine and tap **Add**.
-2. Run the shown one-line command on that machine (`curl … | python3 -`).
+1. In this app, tap **Add machine**, name it, and tap **Continue**.
+2. Run the shown one-line command on that machine (`curl -fsSL …/api/connect/i/<code> | sh`).
 3. It appears here as **Online**.
 
-For an online machine, **Disconnect machine** asks the runner to uninstall
-itself, revokes its access, and removes the saved connection. Connect also shows
-the equivalent local command as a fallback when Möbius cannot reach the machine:
+For an online machine, **Disconnect machine** asks the runner to disconnect from
+this Möbius (it uninstalls itself only if this was its last connection), revokes
+its access, and removes the saved connection. Connect also shows a local command
+as a fallback when Möbius cannot reach the machine:
 
 ```sh
 python3 ~/.mobius-connect/runner.py --uninstall
 ```
 
-Running that command on the machine removes its local service and, when the
-Möbius server is reachable, revokes the saved connection too. If an offline
+Running that command on the machine removes Connect from it entirely: it ends
+the machine's connection to every Möbius it is paired with, not only this one,
+and revokes each saved connection it can reach. If an offline
 machine is permanently unavailable, **Remove saved connection** revokes its
 access and removes it from the app, but cannot remove the local service files.
 
@@ -114,8 +139,11 @@ credentials in the app.
 
 The connection grants command access until it is revoked. Its status stays
 visible in Connect, and the owner can revoke or remove it from the same section
-at any time. Revocation tears down the supervised outbound runner and removes
-its saved pairing state.
+at any time. Revocation happens here and never depends on the other Möbius: it
+stops the supervised outbound runner, tries once to tell the other Möbius with
+the saved credential, then deletes the credentials. The revoke waits for that
+attempt but succeeds either way. If the other Möbius couldn't be told, Connect
+says so; it may keep listing the machine as offline, but can no longer use it.
 
 **Full access** (the checkbox when granting, or the switch on an existing
 connection) gives commands that arrive through it an agent sign-in, so the
@@ -194,6 +222,6 @@ rather than silently executed again. New runners carry reconnect inventories in
 a POST body instead of a size-limited URL; GET remains for older external servers.
 
 A shared-access service being alive does not prove the other Möbius is connected.
-Revocation is confirmed remotely before saved pairing state is removed. If the
-other instance is offline, Connect keeps the connection and reports that
-revocation could not be confirmed; it never silently claims remote revocation.
+Revoking always ends access locally, even when the other instance is offline;
+Connect reports when the other side could not be told rather than claiming it
+was.

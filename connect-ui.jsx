@@ -45,14 +45,17 @@ export function usePolledList(url, field, label, headers, { interval = 5000, pol
 // Run user actions by key: a key cannot run twice at once, and a failure shows
 // the server's reason or, when there is none, the caller's fallback.
 // Resolves to whether the action succeeded.
-export function useAction() {
+export function useAction({ onStart } = {}) {
   const [pending, setPending] = useState([])
   const [error, setError] = useState(null)
   const running = useRef(new Set())
+  const started = useRef(onStart)
+  started.current = onStart
 
   const run = useCallback(async (key, task, fallback) => {
     if (running.current.has(key)) return false
     running.current.add(key)
+    started.current?.(key)
     setPending([...running.current])
     setError(null)
     try {

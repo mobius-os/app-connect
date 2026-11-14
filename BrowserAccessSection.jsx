@@ -62,8 +62,8 @@ export function SharedWithMe({ directory }) {
             </> : instance.status === 'accepted' && list.status === 'ready'
               ? <a className="cn-btn cn-btn-ghost cn-btn-sm" href={instance.open_url} target="_blank" rel="noopener noreferrer">Open</a> : null}
             {/* Ending access runs on the sharing Möbius, which asks to confirm
-                and then checks it is really you. The runtime sends this link
-                only when mobius.you says the sharing Möbius supports leaving. */}
+                and then checks it is really you. An up-to-date runtime sends
+                this link for every share; an older one sends none. */}
             {instance.leave_url && list.status === 'ready'
               ? <a className="cn-btn cn-btn-ghost cn-btn-sm cn-shared-leave" href={instance.leave_url} target="_blank" rel="noopener noreferrer"
                 title={`Give up your access to ${instance.name}. You won’t need to wait for ${instance.owner_handle || 'its owner'}.`}>

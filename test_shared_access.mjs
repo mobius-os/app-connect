@@ -109,8 +109,8 @@ test('recipients can leave or decline on the sharing Möbius without waiting for
   try {
     const leave = page.getByRole('link', { name: 'Leave' })
     await leave.waitFor()
-    // Only the runtime-supplied link is used. Without word that the sharing
-    // Möbius supports leaving, the runtime sends none and nothing is shown.
+    // Only the runtime-supplied link is used. An older runtime sends none,
+    // and then nothing is shown.
     assert.equal(await leave.count(), 1)
     assert.equal(await leave.getAttribute('href'), accepted.leave_url)
     assert.equal(await leave.getAttribute('target'), '_blank')

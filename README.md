@@ -17,8 +17,9 @@ accepted entry, or **Decline** on an invitation, opens the sharing Möbius, whic
 asks them to confirm and then checks their mobius.you account. Leaving is the
 owner's own revoke: every session ends, work the recipient started is stopped,
 and the entry leaves both lists. Coming back needs a new invitation. These
-buttons appear only when this Möbius's runtime supplies a leave link, which it
-does only when mobius.you reports that the sharing Möbius supports leaving.
+buttons appear whenever this Möbius's runtime supplies a leave link, which an
+up-to-date runtime does for every share. A sharing Möbius too old to support
+leaving shows a page that cannot complete it.
 
 **Full access** on an active account row (never a one-time link) also lets that
 person, and the agents they start, delete and recover chats and projects,

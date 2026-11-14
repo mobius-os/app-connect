@@ -206,7 +206,7 @@ export default function BrowserAccessSection({ headers, poll = true, confirmatio
                 only a live grant can use it. */}
             {typeof grant.full_access === 'boolean' && grant.status === 'active' ? <label
               className={`cn-agent-toggle${grant.full_access ? ' is-on' : ''}`}
-              title="Also lets this person, and the agents they start, manage chats, apps, skills, settings and updates. Your accounts, keys, credit and sharing stay yours."
+              title="Also lets this person, and the agents they start, manage chats, apps, settings and updates. Your accounts, keys, credit, skills and sharing stay yours."
             >
               <input type="checkbox" checked={grant.full_access} disabled={locked} aria-label={`Full access for ${name}`}
                 onChange={event => setFullAccess(grant, event.target.checked)}/>Full access

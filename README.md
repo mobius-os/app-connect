@@ -21,12 +21,13 @@ buttons appear only when this Möbius's runtime supplies a leave link, which it
 does only when mobius.you reports that the sharing Möbius supports leaving.
 
 **Full access** on an active person's row also lets them, and the agents they
-start, manage this Möbius's workspace as you can: delete and recover chats,
-maintain apps, skills and settings, and apply updates. It is off by default and
-turning it off or revoking takes effect on their next request. It never covers
-your accounts, keys and connections, credit, payments or app permissions,
-sharing and invitations, push notifications, schedules and reminders, or new
-sign-in credentials, nor your own device's shared folders and screen.
+start, manage this Möbius's workspace: delete and recover chats, maintain apps
+and settings, and apply updates. It is a deliberate subset of a connected
+Möbius's Full access, off by default, and turning it off or revoking takes
+effect on their next request. It never covers your accounts, keys and
+connections, credit, payments or app permissions, sharing and invitations,
+push notifications, schedules, reminders and skills, or new sign-in
+credentials, nor your own device's shared folders and screen.
 
 An owner can revoke access. Settled revoked rows disappear, but rows awaiting
 stop confirmation or directory cleanup remain visible and retryable. A failed

@@ -75,7 +75,7 @@ test('finished output pages preserve server cursor and do not accumulate old tex
 test('online disconnect makes the button primary and explains the local fallback', () => {
   assert.deepEqual(disconnectPresentation({ name: 'Host', paired: true, online: true }), {
     title: 'Disconnect Host?',
-    description: 'You’ll confirm before Connect is uninstalled and this saved connection is removed.',
+    description: 'You’ll confirm before this Möbius disconnects from it and removes this saved connection. Connect is uninstalled only if this was its last connection.',
     actionLabel: 'Disconnect machine',
     commandTitle: 'Otherwise, run it on Host',
     commandDescription: 'Use it when Möbius can’t reach the machine. Unlike the button, it removes Connect from the machine entirely, ending its connections to any other Möbius too.',

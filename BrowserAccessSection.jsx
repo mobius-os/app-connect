@@ -7,6 +7,10 @@ const ENDPOINT = '/api/connect/browser-access'
 // Runtimes from before error codes report an unlinked account only by this text.
 const UNLINKED_DETAIL = 'Link your mobius.you account in Identity first.'
 
+// Only a live account grant proves who the person is; older runtimes send no flag.
+const offersFullAccess = grant => grant.kind === 'account' && typeof grant.full_access === 'boolean' && grant.status === 'active'
+const FULL_ACCESS_NOTE = 'Full access also lets that person, and the agents they start, delete and recover chats and projects, apply updates, restart and tidy notifications. Settings, your provider, accounts, keys, credit, skills, schedules and sharing stay yours.'
+
 const sameShare = (a, b) => a?.grant_id === b.grant_id && a?.origin === b.origin
 
 export function useSharedDirectory(headers) {
@@ -203,11 +207,9 @@ export default function BrowserAccessSection({ headers, poll = true, confirmatio
           {grant.status === 'revoked' ? <button className="cn-btn cn-btn-ghost cn-btn-sm cn-browser-retry" onClick={() => revoke(grant)} disabled={locked}>
             {action.pending.includes(`revoke:${grant.id}`) ? 'Retrying…' : grant.directory_cleanup_pending ? 'Retry cleanup' : 'Retry stop'}
           </button> : <div className="cn-browser-row-action">
-            {/* Only a live account grant proves who the person is; older
-                runtimes send no flag. */}
-            {grant.kind === 'account' && typeof grant.full_access === 'boolean' && grant.status === 'active' ? <label
+            {offersFullAccess(grant) ? <label
               className={`cn-agent-toggle${grant.full_access ? ' is-on' : ''}`}
-              title="Also lets this person, and the agents they start, delete and recover chats and projects, apply updates, restart and tidy notifications. Settings, your provider, accounts, keys, credit, skills, schedules and sharing stay yours."
+              title={FULL_ACCESS_NOTE}
             >
               <input type="checkbox" checked={grant.full_access} disabled={locked} aria-label={`Full access for ${name}`}
                 onChange={event => setFullAccess(grant, event.target.checked)}/>Full access
@@ -231,5 +233,6 @@ export default function BrowserAccessSection({ headers, poll = true, confirmatio
         </article>
       })}
     </div> : <div className="cn-empty-row">No people with access yet.</div> : null}
+    {hasList && shown.some(offersFullAccess) ? <p className="cn-browser-note">{FULL_ACCESS_NOTE}</p> : null}
   </section>
 }

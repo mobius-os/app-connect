@@ -85,9 +85,10 @@ token minted at pairing.
 2. Run the shown one-line command on that machine (`curl -fsSL …/api/connect/i/<code> | sh`).
 3. It appears here as **Online**.
 
-For an online machine, **Disconnect machine** asks the runner to uninstall
-itself, revokes its access, and removes the saved connection. Connect also shows
-the equivalent local command as a fallback when Möbius cannot reach the machine:
+For an online machine, **Disconnect machine** asks the runner to disconnect from
+this Möbius (it uninstalls itself only if this was its last connection), revokes
+its access, and removes the saved connection. Connect also shows a local command
+as a fallback when Möbius cannot reach the machine:
 
 ```sh
 python3 ~/.mobius-connect/runner.py --uninstall
@@ -135,10 +136,11 @@ credentials in the app.
 
 The connection grants command access until it is revoked. Its status stays
 visible in Connect, and the owner can revoke or remove it from the same section
-at any time. Revocation happens here and never waits on the other Möbius: it
-stops the supervised outbound runner and deletes its credentials first, then
-tells the other Möbius when it can be reached. If it can't be, Connect says so;
-that Möbius may keep listing the machine as offline, but it can no longer use it.
+at any time. Revocation happens here and never depends on the other Möbius: it
+stops the supervised outbound runner, tries once to tell the other Möbius with
+the saved credential, then deletes the credentials. The revoke waits for that
+attempt but succeeds either way. If the other Möbius couldn't be told, Connect
+says so; it may keep listing the machine as offline, but can no longer use it.
 
 **Full access** (the checkbox when granting, or the switch on an existing
 connection) gives commands that arrive through it an agent sign-in, so the

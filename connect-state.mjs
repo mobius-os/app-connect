@@ -130,7 +130,7 @@ export function disconnectPresentation(host) {
 
   return {
       title: `Disconnect ${name}?`,
-      description: 'You’ll confirm before Connect is uninstalled and this saved connection is removed.',
+      description: 'You’ll confirm before this Möbius disconnects from it and removes this saved connection. Connect is uninstalled only if this was its last connection.',
     actionLabel: 'Disconnect machine',
     commandTitle: `Otherwise, run it on ${name}`,
     commandDescription: 'Use it when Möbius can’t reach the machine. Unlike the button, it removes Connect from the machine entirely, ending its connections to any other Möbius too.',

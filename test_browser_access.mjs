@@ -308,6 +308,8 @@ test('Full access is a per-person switch on active rows, shown only where the ru
     // Each row's switch names its person; inactive rows and older runtimes have none.
     assert.equal(await page.getByRole('checkbox').count(), 1)
     assert.equal(await toggle.isChecked(), false)
+    // What it allows is visible text, not only a tooltip phones never show.
+    await page.getByText(/^Full access also lets that person.*sharing stay yours\.$/).waitFor()
     await toggle.click()
     await page.waitForFunction(() => document.querySelector('.cn-agent-toggle.is-on'))
     const patch = requests.find(item => item.method === 'PATCH')

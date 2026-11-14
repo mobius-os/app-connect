@@ -338,7 +338,9 @@ test('a revoke whose stop step failed shows revoked but still stopping, with ret
   const grants = [account()]
   const { browser, page } = await open(script, server(grants, request => {
     if (request.method !== 'DELETE') return undefined
-    grants[0] = { ...grants[0], status: 'revoked', stop_pending: true }
+    // The list never says stop_pending, so only the revoke's own 202 answer
+    // can show the row as still stopping.
+    grants[0] = { ...grants[0], status: 'revoked', stop_pending: false }
     return { status: 202, body: { revoked: true, pending_commands: [], pending_chat_ids: [], stop_incomplete: true } }
   }))
   try {

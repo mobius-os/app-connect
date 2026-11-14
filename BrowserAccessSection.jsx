@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Plus } from '@openai/apps-sdk-ui/components/Icon'
 import { serverError } from './connect-api.mjs'
 import { InlineActionConfirm, ListNote, useAction, usePolledList } from './connect-ui.jsx'
@@ -9,15 +9,15 @@ const UNLINKED_DETAIL = 'Link your mobius.you account in Identity first.'
 
 // Only a live account grant proves who the person is; older runtimes send no flag.
 const offersFullAccess = grant => grant.kind === 'account' && typeof grant.full_access === 'boolean' && grant.status === 'active'
-const FULL_ACCESS_NOTE = 'Full access also lets that person, and the agents they start, delete and recover chats and projects, apply updates, restart and tidy notifications. Settings, your provider, accounts, keys, credit, skills, schedules and sharing stay yours.'
+const FULL_ACCESS_NOTE = 'Full access also lets that person, and the agents they start, delete and recover chats and projects, permanently erase uninstalled apps (skipping their recovery window), apply updates or cancel ones not yet applied, restart, stop a chat’s compaction, set app badges and tidy notifications. Settings, your provider, accounts, keys, credit, skills, schedules and sharing stay yours.'
 
 const sameShare = (a, b) => a?.grant_id === b.grant_id && a?.origin === b.origin
 
-export function useSharedDirectory(headers) {
+export function useSharedDirectory(headers, { onAction } = {}) {
   // Each read goes through to mobius.you, so poll slowly; the app also reloads
   // it when the Shared tab opens and whenever the page becomes visible.
   const list = usePolledList(`${ENDPOINT}/shared`, 'instances', 'Shared Möbius', headers, { interval: 60000 })
-  const action = useAction()
+  const action = useAction({ onStart: onAction })
   const respond = (instance, choice) => action.run(`respond:${instance.grant_id}`, async () => {
     const response = await fetch(`${ENDPOINT}/shared/respond`, {
       method: 'POST', headers: headers({ 'Content-Type': 'application/json' }),
@@ -65,7 +65,7 @@ export function SharedWithMe({ directory }) {
                 and then checks it is really you. An up-to-date runtime sends
                 this link for every share; an older one sends none. */}
             {instance.leave_url && list.status === 'ready'
-              ? <a className="cn-btn cn-btn-ghost cn-btn-sm cn-shared-leave" href={instance.leave_url} target="_blank" rel="noopener noreferrer"
+              ? <a className="cn-btn cn-btn-ghost cn-btn-sm" href={instance.leave_url} target="_blank" rel="noopener noreferrer"
                 title={`Give up your access to ${instance.name}. You won’t need to wait for ${instance.owner_handle || 'its owner'}.`}>
                 {invited ? 'Decline' : 'Leave'}
               </a> : null}
@@ -102,8 +102,7 @@ function revokeFallback(grant) {
 
 export default function BrowserAccessSection({ headers, poll = true, confirmation, setConfirmation, onAction }) {
   const grants = usePolledList(ENDPOINT, 'grants', 'Shared access', headers, { poll })
-  const action = useAction()
-  useEffect(() => { if (action.pending.length) onAction?.() }, [action.pending, onAction])
+  const action = useAction({ onStart: onAction })
   const [inviting, setInviting] = useState(false)
   const [handle, setHandle] = useState('')
 

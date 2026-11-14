@@ -729,9 +729,11 @@ export default function App({ appId, token }) {
   const [accessCommand, setAccessCommand] = useState('')
   const [sharingOpen, setSharingOpen] = useState(false)
   const [revokeNotice, setRevokeNotice] = useState(null)
+  // Any next action, in any section, supersedes the last revoke's note.
+  const clearRevokeNotice = useCallback(() => setRevokeNotice(null), [])
   const [accessAgent, setAccessAgent] = useState(false)
   const readySignalled = useRef(false)
-  const action = useAction()
+  const action = useAction({ onStart: clearRevokeNotice })
   const pending = key => action.pending.includes(key)
 
   const headers = useCallback((extra = {}) => ({
@@ -747,12 +749,7 @@ export default function App({ appId, token }) {
     interval: items => pairing || items.some(host => host.busy) ? 1500 : 5000,
   })
   const outbound = usePolledList('/api/connect/outbound', 'connections', 'Shared access', headers, { poll: onMachines })
-  const directory = useSharedDirectory(headers)
-  // Any next action, in any section, supersedes the last revoke's note.
-  const clearRevokeNotice = useCallback(() => setRevokeNotice(null), [])
-  useEffect(() => {
-    if (action.pending.length || directory.action.pending.length) clearRevokeNotice()
-  }, [action.pending, directory.action.pending, clearRevokeNotice])
+  const directory = useSharedDirectory(headers, { onAction: clearRevokeNotice })
   const machinesStale = hosts.status === 'stale'
   const outboundStale = outbound.status === 'stale'
 

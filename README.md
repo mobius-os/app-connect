@@ -23,8 +23,10 @@ leaving shows a page that cannot complete it.
 
 **Full access** on an active account row (never a one-time link) also lets that
 person, and the agents they start, delete and recover chats and projects,
-apply reviewed app and platform updates, restart this Möbius, and clear or mark
-notifications. It is a deliberate subset of a connected Möbius's Full access,
+permanently erase an uninstalled app (skipping its recovery window), apply
+reviewed app and platform updates or cancel one not yet applied, restart this
+Möbius, watch and stop a chat's compaction, set an app's badge, and clear or
+mark notifications. It is a deliberate subset of a connected Möbius's Full access,
 off by default, and turning it off or revoking takes effect on their next
 request. It never covers settings or your provider and model, your accounts,
 keys and connections, credit, payments or app permissions, sharing and

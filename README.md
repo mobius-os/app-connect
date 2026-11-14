@@ -14,18 +14,19 @@ grant access.
 
 A recipient never has to wait for the owner to end their access. **Leave** on an
 accepted entry, or **Decline** on an invitation, opens the sharing Möbius, which
-checks the recipient's mobius.you account and then asks them to confirm. Leaving
-is the owner's own revoke: every session ends, work the recipient started is
-stopped, and the entry leaves both lists. Coming back needs a new invitation.
-The sharing Möbius must run a release that supports leaving; older ones offer no
-**Leave** link.
+asks them to confirm and then checks their mobius.you account. Leaving is the
+owner's own revoke: every session ends, work the recipient started is stopped,
+and the entry leaves both lists. Coming back needs a new invitation. These
+buttons appear only when this Möbius's runtime supplies a leave link, which it
+does only when mobius.you reports that the sharing Möbius supports leaving.
 
-**Full access** on a person's row also gives them, and the agents they start,
-the installation controls a guest otherwise lacks: settings, keys and
-connections, GitHub and account links, updates, schedules, and who has access.
-It is off by default, matches the Full access a connected Möbius can get, and
-turning it off or revoking takes effect on their next request. Your own
-device's shared folders and your screen stay yours either way.
+**Full access** on an active person's row also lets them, and the agents they
+start, manage this Möbius's workspace as you can: delete and recover chats,
+maintain apps, skills and settings, and apply updates. It is off by default and
+turning it off or revoking takes effect on their next request. It never covers
+your accounts, keys and connections, credit, payments or app permissions,
+sharing and invitations, push notifications, schedules and reminders, or new
+sign-in credentials, nor your own device's shared folders and screen.
 
 An owner can revoke access. Settled revoked rows disappear, but rows awaiting
 stop confirmation or directory cleanup remain visible and retryable. A failed

@@ -65,6 +65,29 @@ test('revoke ends access here even when the other Möbius cannot be told, and sa
   } finally { await browser.close() }
 })
 
+test('the revoke note clears on the next unrelated action', async () => {
+  let connections = [
+    { id: 'o1', label: 'Studio', target: 'studio.example', online: false, status: 'error', agent: true },
+    { id: 'o2', label: 'Lab', target: 'lab.example', online: true, status: 'active', agent: false },
+  ]
+  const { browser, page } = await open(script, request => {
+    if (request.method === 'DELETE') {
+      connections = connections.filter(item => item.id !== 'o1')
+      return { body: { ok: true, remote_notified: false } }
+    }
+    if (request.method === 'PATCH') return { body: {} }
+    return machines({ connections, agent_access: true })(request)
+  })
+  try {
+    await page.getByRole('button', { name: 'Remove access' }).click()
+    await page.getByRole('button', { name: 'Confirm remove' }).click()
+    const note = page.getByText(/Studio no longer has access/)
+    await note.waitFor()
+    await page.getByRole('checkbox', { name: 'Full access' }).click()
+    await note.waitFor({ state: 'hidden' })
+  } finally { await browser.close() }
+})
+
 test('a new machine starts with an editable default name; Enter creates it and shows pairing', async () => {
   const { browser, page, requests } = await open(script, machines({ hosts: [], write: request => request.method === 'POST'
     ? { body: { id: 'h2', name: request.body.name, install_command: 'curl https://fixture.test/pair | sh' } } : undefined }))

@@ -58,8 +58,8 @@ export function SharedWithMe({ directory }) {
             </> : instance.status === 'accepted' && list.status === 'ready'
               ? <a className="cn-btn cn-btn-ghost cn-btn-sm" href={instance.open_url} target="_blank" rel="noopener noreferrer">Open</a> : null}
             {/* Ending access runs on the sharing Möbius, which asks to confirm
-                after checking it is really you. A runtime from before leaving
-                sends no link. */}
+                and then checks it is really you. The runtime sends this link
+                only when mobius.you says the sharing Möbius supports leaving. */}
             {instance.leave_url && list.status === 'ready'
               ? <a className="cn-btn cn-btn-ghost cn-btn-sm cn-shared-leave" href={instance.leave_url} target="_blank" rel="noopener noreferrer"
                 title={`Give up your access to ${instance.name}. You won’t need to wait for ${instance.owner_handle || 'its owner'}.`}>
@@ -202,12 +202,13 @@ export default function BrowserAccessSection({ headers, poll = true, confirmatio
           {grant.status === 'revoked' ? <button className="cn-btn cn-btn-ghost cn-btn-sm cn-browser-retry" onClick={() => revoke(grant)} disabled={locked}>
             {action.pending.includes(`revoke:${grant.id}`) ? 'Retrying…' : grant.directory_cleanup_pending ? 'Retry cleanup' : 'Retry stop'}
           </button> : <div className="cn-browser-row-action">
-            {/* Runtimes from before per-person Full access send no flag. */}
-            {typeof grant.full_access === 'boolean' ? <label
+            {/* Runtimes from before per-person Full access send no flag, and
+                only a live grant can use it. */}
+            {typeof grant.full_access === 'boolean' && grant.status === 'active' ? <label
               className={`cn-agent-toggle${grant.full_access ? ' is-on' : ''}`}
-              title="Also lets this person, and the agents they start, manage your settings, keys, accounts, updates and who has access, as you can."
+              title="Also lets this person, and the agents they start, manage chats, apps, skills, settings and updates. Your accounts, keys, credit and sharing stay yours."
             >
-              <input type="checkbox" checked={grant.full_access} disabled={locked}
+              <input type="checkbox" checked={grant.full_access} disabled={locked} aria-label={`Full access for ${name}`}
                 onChange={event => setFullAccess(grant, event.target.checked)}/>Full access
             </label> : null}
             {grant.kind === 'account' && (grant.status === 'inactive' || grant.status === 'pending') ? <button className="cn-btn cn-btn-ghost cn-btn-sm" onClick={() => invite(grant.recipient_handle)} disabled={locked}>

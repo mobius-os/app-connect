@@ -289,22 +289,59 @@ test('a pending account share can be invited again, retrying its reserved grant'
   } finally { await browser.close() }
 })
 
-test('Full access is a per-person switch, shown only where the runtime reports it', async () => {
-  const grants = [{ ...account(), full_access: false }, { ...link(), id: 'g2', label: 'Old runtime' }]
+test('Full access is a per-person switch on active rows, shown only where the runtime reports it', async () => {
+  const grants = [
+    { ...account(), full_access: false },
+    { ...account('inactive'), id: 'a2', recipient_handle: 'former', full_access: false },
+    { ...link(), id: 'g2', label: 'Old runtime' },
+  ]
   const { browser, page, requests } = await open(script, server(grants, request => {
     if (request.method !== 'PATCH') return undefined
     grants[0] = { ...grants[0], full_access: request.body.full_access }
     return { body: { grant: grants[0] } }
   }))
   try {
-    const toggle = page.getByRole('checkbox', { name: 'Full access' })
+    const toggle = page.getByRole('checkbox', { name: 'Full access for friend', exact: true })
     await toggle.waitFor()
-    assert.equal(await toggle.count(), 1)
+    // Each row's switch names its person; inactive rows and older runtimes have none.
+    assert.equal(await page.getByRole('checkbox').count(), 1)
     assert.equal(await toggle.isChecked(), false)
     await toggle.click()
     await page.waitForFunction(() => document.querySelector('.cn-agent-toggle.is-on'))
     const patch = requests.find(item => item.method === 'PATCH')
     assert.deepEqual(patch, { method: 'PATCH', path: ENDPOINT + '/a1', query: '', body: { full_access: true } })
     assert.equal(await toggle.isChecked(), true)
+  } finally { await browser.close() }
+})
+
+for (const [failure, answer] of [
+  ['is refused', { status: 500, body: { detail: 'Database unavailable.' } }],
+  ['gets an unexpected answer', { body: { grant: { id: 'a1', full_access: false } } }],
+]) {
+  test(`a Full access change that ${failure} says so and keeps the switch off`, async () => {
+    const grants = [{ ...account(), full_access: false }]
+    const { browser, page } = await open(script, server(grants, request => request.method === 'PATCH' ? answer : undefined))
+    try {
+      const toggle = page.getByRole('checkbox', { name: 'Full access for friend', exact: true })
+      await toggle.click()
+      await page.getByRole('alert').waitFor()
+      assert.equal(await toggle.isChecked(), false)
+    } finally { await browser.close() }
+  })
+}
+
+test('a revoke whose stop step failed shows revoked but still stopping, with retry', async () => {
+  const grants = [account()]
+  const { browser, page } = await open(script, server(grants, request => {
+    if (request.method !== 'DELETE') return undefined
+    grants[0] = { ...grants[0], status: 'revoked', stop_pending: true }
+    return { status: 202, body: { revoked: true, pending_commands: [], pending_chat_ids: [], stop_incomplete: true } }
+  }))
+  try {
+    await page.getByRole('button', { name: 'Revoke' }).click()
+    await page.getByRole('button', { name: 'Confirm revoke' }).click()
+    await page.getByText('Some work is still stopping; stop confirmation is pending.').waitFor()
+    await page.getByRole('button', { name: 'Retry stop' }).waitFor()
+    assert.equal(await page.getByRole('alert').count(), 0)
   } finally { await browser.close() }
 })

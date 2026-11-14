@@ -732,6 +732,8 @@ export default function App({ appId, token }) {
   const [accessAgent, setAccessAgent] = useState(false)
   const readySignalled = useRef(false)
   const action = useAction()
+  // Any next action supersedes the last revoke's note.
+  useEffect(() => { if (action.pending.length) setRevokeNotice(null) }, [action.pending])
   const pending = key => action.pending.includes(key)
 
   const headers = useCallback((extra = {}) => ({
